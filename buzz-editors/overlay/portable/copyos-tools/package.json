@@ -1,0 +1,12 @@
+{
+  "name": "@buzz-local/copyos-tools",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "@buzz-local/copyos-domain": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@deepseek-ai/cordis": "4.0.4"
+  },
+  "devDependencies": {}
+}

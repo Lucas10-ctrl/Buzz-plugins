@@ -1,0 +1,217 @@
+.section {
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  font: inherit;
+}
+.section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.section h3 {
+  margin: 0;
+  font: inherit;
+  font-weight: 500;
+}
+.section button,
+.editor button {
+  padding: 4px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.section button:hover:enabled,
+.editor button:hover:enabled {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.section button:disabled,
+.editor button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.wide {
+  width: 100%;
+  margin-top: 8px;
+}
+.axis {
+  display: grid;
+  grid-template-columns: minmax(56px, 0.8fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.axis span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.axis select,
+.editor input,
+.editor textarea,
+.editor select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 4px 6px;
+}
+.panel {
+  width: min(360px, calc(100vw - 24px));
+}
+.editor {
+  padding: 12px;
+}
+.axisEditor {
+  position: relative;
+  padding: 0 28px 12px 0;
+  margin-bottom: 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+.axisEditor label {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.axisEditor > button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 3px;
+}
+.axisEditor textarea {
+  max-height: 120px;
+  resize: vertical;
+}
+.tuples {
+  max-height: min(280px, 40vh);
+  overflow: auto;
+  margin: 8px 0;
+}
+.tuples fieldset {
+  margin: 0;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+.tuples legend {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tuples label {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+.save {
+  width: 100%;
+}
+.hint,
+.editor small,
+.editor p {
+  margin: 4px 0;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  line-height: 1.5;
+}
+.section :focus-visible,
+.editor :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.section .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+.axisActions {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.axisActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.up svg {
+  transform: rotate(180deg);
+}
+.section .axisName {
+  overflow: hidden;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.axisNameInput {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 4px 6px;
+}
+.renamePanel {
+  width: min(280px, calc(100vw - 24px));
+}
+.renameValue {
+  padding: 12px;
+}
+.renameValue label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.renameValue input,
+.renameValue select,
+.renameValue button {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+}
+.renameValue p {
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+}
+.renameValue :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.axisActions > span {
+  display: inline-flex;
+}
+.renameValue input,
+.renameValue select,
+.renameValue button {
+  box-sizing: border-box;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 4px 6px;
+}
+.renameValue button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

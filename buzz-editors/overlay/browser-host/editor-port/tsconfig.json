@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "../../portable/editor-host/src/store.ts",
+    "../../portable/editor-host/src/canvas-store.ts",
+    "../../portable/copyos-domain/src/paper-core.d.ts"
+  ]
+}

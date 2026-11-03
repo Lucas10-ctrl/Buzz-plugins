@@ -1,0 +1,20 @@
+.mark {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--copyos-mark-size);
+  height: var(--copyos-mark-size);
+  border-radius: 7px;
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: calc(var(--copyos-mark-size) * 0.58);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.name {
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}

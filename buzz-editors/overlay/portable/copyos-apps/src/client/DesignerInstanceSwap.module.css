@@ -1,0 +1,140 @@
+.section {
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  font: inherit;
+}
+.label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--dsw-alias-label-secondary);
+}
+.heading,
+.trigger,
+.option,
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.heading {
+  gap: 4px;
+}
+.trigger {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.trigger > span,
+.option > span:first-of-type {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trigger:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.goMain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+.panel {
+  width: min(280px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+}
+.content {
+  min-height: 0;
+}
+.search {
+  margin: 8px;
+  padding-left: 6px;
+  color: var(--dsw-alias-label-secondary);
+}
+.search input {
+  width: 100%;
+  min-width: 0;
+}
+.list {
+  max-height: min(360px, calc(100vh - 150px));
+  overflow: auto;
+  padding: 0 4px 4px;
+}
+.list h4 {
+  margin: 8px 8px 4px;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-weight: 500;
+}
+.panel .option {
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.option[aria-selected='true'] {
+  background: var(--dsw-alias-component-bg-hover);
+}
+.empty {
+  margin: 16px 8px;
+  color: var(--dsw-alias-label-secondary);
+}
+.trigger:hover:enabled,
+.goMain:hover,
+.panel .option:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.section :focus-visible,
+.panel :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.optionText > span,
+.optionText > small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.optionText > small {
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+}
+.picker {
+  min-width: 0;
+}
+.pagination {
+  padding: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+}
+.pagination p {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-secondary);
+}
+.pagination button {
+  width: 100%;
+  padding: 6px;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+}

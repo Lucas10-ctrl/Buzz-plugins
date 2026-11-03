@@ -1,0 +1,7 @@
+.editor { --vector-ink: var(--designer-blue, #0d99ff); }
+.segment { fill: none; stroke: transparent; pointer-events: stroke; cursor: crosshair; }
+.arm { stroke: var(--vector-ink); stroke-width: 1; pointer-events: none; }
+.anchor, .control { stroke: var(--vector-ink); stroke-width: 1.5; fill: var(--designer-panel); cursor: crosshair; }
+.anchor[aria-pressed='true'] { fill: var(--vector-ink); }
+
+.anchor:focus, .control:focus, .anchor[aria-pressed='true'], .control[aria-pressed='true'] { stroke: var(--designer-foreground); stroke-width: 2; outline: none; }

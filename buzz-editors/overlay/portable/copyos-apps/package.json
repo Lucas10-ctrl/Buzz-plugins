@@ -1,0 +1,45 @@
+{
+  "name": "@buzz-local/copyos-apps",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/types/copyos-apps/src/index.d.ts",
+      "import": "./dist/copyos-apps.js"
+    },
+    "./style.css": "./dist/copyos-apps.css"
+  },
+  "dependencies": {
+    "@buzz-local/copyos-domain": "workspace:*",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-client-store": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+    "@deepseek-ai/dsh-util-crypto": "workspace:*",
+    "@tiptap/core": "3.32.1",
+    "@tiptap/extension-blockquote": "3.32.1",
+    "@tiptap/extension-code-block-lowlight": "3.32.1",
+    "@tiptap/extension-image": "3.32.1",
+    "@tiptap/extension-list": "3.32.1",
+    "@tiptap/extension-placeholder": "3.32.1",
+    "@tiptap/extension-table": "3.32.1",
+    "@tiptap/markdown": "3.32.1",
+    "@tiptap/pm": "3.32.1",
+    "@tiptap/react": "3.32.1",
+    "@tiptap/starter-kit": "3.32.1",
+    "d3-dsv": "3.0.1",
+    "echarts": "6.1.0",
+    "lowlight": "3.3.0",
+    "postcss": "8.5.28",
+    "postcss-value-parser": "4.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@types/d3-dsv": "3.0.7",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7"
+  }
+}

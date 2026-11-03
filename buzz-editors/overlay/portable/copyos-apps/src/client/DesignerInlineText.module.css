@@ -1,0 +1,123 @@
+.toolbar {
+  position: fixed;
+  z-index: 1300;
+  width: 276px;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  border: 1px solid var(--designer-border);
+  border-radius: 8px;
+  background: var(--designer-panel);
+  color: var(--designer-foreground);
+  box-shadow: var(--dsw-elevation-prominent);
+  font:
+    400 11px/16px CopyOSInter,
+    Inter,
+    sans-serif;
+}
+.toolbar button,
+.toolbar input,
+.toolbar select {
+  font: inherit;
+}
+.toolbar button,
+.toolbar input,
+.toolbar select {
+  min-height: 24px;
+  border: 1px solid var(--designer-border);
+  border-radius: 4px;
+  background: var(--designer-field);
+  color: inherit;
+}
+.toolbar button {
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.toolbar button[aria-pressed="true"] {
+  color: var(--dsw-alias-link);
+  background: var(--designer-selected);
+}
+.toolbar button:disabled,
+.toolbar fieldset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.toolbar p {
+  margin: 6px 0 0;
+  color: var(--designer-muted);
+}
+.actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.actions button:nth-child(2) {
+  font-style: italic;
+}
+.actions button:nth-child(3) {
+  text-decoration: underline;
+}
+.actions button:last-child {
+  margin-left: auto;
+}
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+}
+.fields > label,
+.fields > div {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  min-width: 0;
+}
+.fields input,
+.fields select {
+  width: 100%;
+  min-width: 0;
+}
+.fields input[type="color"] {
+  padding: 2px;
+}
+.family {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.colorField {
+  position: relative;
+  min-height: 24px;
+}
+.colorField > span {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+.unrepresentedColor {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.docked {
+  position: static;
+  z-index: auto;
+  width: auto;
+  max-width: none;
+  margin: 0 0 8px;
+  box-shadow: none;
+}
+/* The Properties panel is narrower than the floating panel: wrap the action row and keep every child inside the column. */
+.docked .actions {
+  flex-wrap: wrap;
+}
+.docked .fields > *,
+.docked button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

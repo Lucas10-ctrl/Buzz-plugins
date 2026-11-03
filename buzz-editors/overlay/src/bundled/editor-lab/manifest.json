@@ -1,0 +1,20 @@
+{
+  "id": "local.editor-lab",
+  "name": "Editor Lab",
+  "apiVersion": 1,
+  "description": "Development port of the original CopyOS editors with Buzz agent integration. Incomplete; separate test data.",
+  "host": {
+    "processes": [
+      {
+        "id": "editor-repository",
+        "program": "buzz-editor-host",
+        "bundled": true,
+        "args": [
+          "--input-type=module",
+          "-e",
+          "import {pathToFileURL} from 'node:url'; import {dirname,join} from 'node:path'; const {start}=await import(pathToFileURL(join(dirname(process.execPath),'editor-bootstrap.mjs')).href); await start(process.argv[1]);"
+        ]
+      }
+    ]
+  }
+}

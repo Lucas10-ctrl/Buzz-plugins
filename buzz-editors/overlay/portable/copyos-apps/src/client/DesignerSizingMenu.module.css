@@ -1,0 +1,87 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  max-width: 64px;
+  border: 0;
+  background: transparent;
+  color: var(--designer-foreground);
+  font: inherit;
+  font-size: 10px;
+  padding: 0 3px;
+}
+.panel {
+  width: min(240px, calc(100vw - 24px));
+}
+.policies {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+}
+.policies button,
+.bound button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--designer-foreground);
+  font: inherit;
+  min-height: 24px;
+  text-align: left;
+  padding: 3px 6px;
+}
+.policies button:hover:enabled,
+.policies button:focus-visible,
+.bound button:hover:enabled {
+  background: var(--designer-field);
+}
+.policies button[aria-pressed="true"] {
+  color: var(--dsw-alias-link);
+  font-weight: 500;
+}
+.panel button:disabled {
+  opacity: 0.4;
+}
+.panel :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.limits {
+  border-top: 1px solid var(--designer-border);
+  padding: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bound {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  gap: 2px;
+}
+.heading > span {
+  flex: 1;
+}
+.heading button {
+  padding: 2px;
+}
+.bound select {
+  min-width: 0;
+  width: 100%;
+  min-height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--designer-field);
+  color: var(--designer-foreground);
+  font: inherit;
+}
+
+.effective { font: inherit; color: var(--dsw-alias-label-secondary); }
+
+.limitBadge { border-inline: 1px solid currentColor; padding-inline: 2px; }

@@ -1,0 +1,14 @@
+{
+  "name": "@buzz-local/editor-host",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "@buzz-local/copyos-domain": "workspace:*",
+    "@buzz-local/copyos-tools": "workspace:*",
+    "parse5": "8.0.1",
+    "srcset": "5.0.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {}
+}

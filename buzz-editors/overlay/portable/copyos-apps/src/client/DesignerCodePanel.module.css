@@ -1,0 +1,88 @@
+.panel {
+  padding: 12px;
+  font:
+    400 11px/16px CopyOSInter,
+    Inter,
+    sans-serif;
+  color: var(--designer-foreground);
+}
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.heading h3,
+.context h4 {
+  margin: 0;
+  font: inherit;
+  font-weight: 500;
+}
+.heading button {
+  min-height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--designer-field);
+  color: inherit;
+  font: inherit;
+  padding: 3px 7px;
+}
+.panel button:disabled {
+  opacity: 0.4;
+}
+.panel :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.panel textarea {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  border: 0.5px solid var(--inspector-field-border, var(--designer-border));
+  border-radius: var(--inspector-field-radius, 5px);
+  background: var(--inspector-field, var(--designer-field));
+  color: inherit;
+  padding: 8px;
+  white-space: pre;
+  font:
+    11px/17px ui-monospace,
+    monospace;
+  tab-size: 2;
+}
+.context {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--designer-border);
+  overflow-wrap: anywhere;
+}
+.context p {
+  margin: 4px 0 8px;
+}
+.context ul {
+  padding-left: 16px;
+  margin: 4px 0 8px;
+}
+.context li {
+  margin: 3px 0;
+}
+.context li code {
+  font:
+    10px/16px ui-monospace,
+    monospace;
+}
+.context details li {
+  display: flex;
+  flex-direction: column;
+}
+.context summary {
+  cursor: pointer;
+}

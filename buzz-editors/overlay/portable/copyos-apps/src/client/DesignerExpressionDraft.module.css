@@ -1,0 +1,134 @@
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-items: start;
+  align-content: start;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  font: inherit;
+}
+.editor input,
+.editor select,
+.editor button {
+  min-width: 0;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  border: 0;
+  border-radius: 4px;
+  background: var(--dsw-alias-component-bg-hover);
+  padding: 5px 6px;
+}
+/* These controls live inside the shared token popover, whose generic input/select
+   margins must not add a second spacing system or stretch the formula grid. */
+.editor.editor > input,
+.editor.editor > select {
+  display: block;
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  margin: 0;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  line-height: 16px;
+  align-self: start;
+}
+.editor input:focus-visible,
+.editor select:focus-visible,
+.editor button:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.help,
+.status p {
+  margin: 0;
+  line-height: 1.4;
+}
+.help {
+  color: var(--dsw-alias-label-secondary);
+}
+.status {
+  min-height: 16px;
+}
+.dependencies {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  max-height: 80px;
+  overflow: auto;
+}
+.dependencies > span:not(:first-child) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 3px;
+  background: var(--dsw-alias-component-bg-hover);
+  padding: 2px 4px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.editor.editor .actions > button,
+.resource.resource > .actions > button {
+  min-height: 24px;
+  margin: 0;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  line-height: 16px;
+}
+.actions button {
+  cursor: pointer;
+}
+.actions button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.resource {
+  margin-top: 4px;
+  font: inherit;
+}
+.trigger {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.trigger[data-formula='true'] {
+  color: var(--dsw-alias-link);
+}
+.trigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.trigger:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.resource > .actions {
+  margin-top: 6px;
+}
+.resource > .actions button {
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 6px;
+  background: var(--dsw-alias-component-bg-hover);
+}

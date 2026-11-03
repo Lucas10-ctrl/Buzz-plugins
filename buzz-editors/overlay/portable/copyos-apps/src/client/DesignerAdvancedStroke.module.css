@@ -1,0 +1,59 @@
+.body {
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  font-size: 11px;
+}
+.row {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+/* Labels sit above their controls, as in the Builder-style inspector. */
+.row > span:first-child,
+.pattern > span:first-child {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 13px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  min-width: 0;
+}
+.pattern {
+  display: grid;
+  gap: 6px;
+}
+.pattern input {
+  width: 100%;
+  box-sizing: border-box;
+  height: var(--inspector-control-height, 24px);
+  border: 0.5px solid var(--inspector-field-border, transparent);
+  border-radius: var(--inspector-field-radius, 4px);
+  padding: 3px 8px;
+  color: var(--designer-foreground);
+  background: var(--inspector-field, var(--designer-field));
+  font: inherit;
+}
+.pattern input:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-link);
+}
+.pattern input[aria-invalid='true'] {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+.notice {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1.4;
+}
+.error {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  line-height: 1.4;
+}

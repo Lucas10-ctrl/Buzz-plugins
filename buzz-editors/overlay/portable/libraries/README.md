@@ -1,0 +1,11 @@
+# Retained editor libraries
+
+These seven private workspace packages contain the CopyOS snapshot's reusable client store, primitives, locale/slot types, atomic writer and value/path/crypto helpers. They do not register or launch an application, agent loop, provider, session server or model picker. The original editor views still import their existing library APIs.
+
+`SOURCE_MANIFEST.json` records SHA-256 values for the original publication files, original package metadata and license. `scripts/audit-editor-source.mjs` verifies those bytes and rejects editor dependency directories outside this Buzz checkout. It runs after the editor build. Files came from the isolated snapshot's declared publication list; package scripts were not executed. No bootstrap step reads that snapshot. Biome excludes this exact retained-library directory; the executed source audit protects its unchanged bytes instead of formatting third-party publication files.
+
+Each `UPSTREAM_PACKAGE.json` preserves the source manifest. The active package manifest is adapted for this private workspace: runtime imports are explicit dependencies; local libraries use workspace references; source-repository build/publication scripts are removed. The original library implementation, CSS and declarations remain unchanged. React runtime imports use Buzz's version, while original declarations retain their React 18 type dependency. The bundled views externalize React for the host.
+
+The enclosing portable workspace has its own frozen lockfile so the original editors' ProseMirror graph does not replace Buzz's composer graph. Its CSS calculator is pinned to the snapshot's version. The unchanged Zustand 4.4.7 store uses the React-19-compatible use-sync-external-store 1.6.0 shim. The html-to-docx postinstall only prints marketing text and is explicitly disabled; its published renderer requires no installation build.
+
+Run `bin/pnpm editors:install` from the Buzz root to install the portable workspace. `editors:build` first checks that frozen installation, then builds the original views and repository worker and audits the retained files. Updating a retained implementation requires an explicit source update and reviewed hash changes; replacing it with a same-version registry artifact is not equivalent to retaining this snapshot.

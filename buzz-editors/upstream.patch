@@ -1,0 +1,1216 @@
+diff --git i/.gitignore w/.gitignore
+index 95e41ab..bd8d5e0 100644
+--- i/.gitignore
++++ w/.gitignore
+@@ -42,3 +42,6 @@ dist-buzz-mcp/
+ # stays so Tauri always finds its bundled resources.
+ src-tauri/resources/bin/*
+ !src-tauri/resources/bin/.gitkeep
++
++# Shared editor runtime assembled from the isolated source/dependency snapshot.
++portable/editor-host/runtime/
+diff --git i/Cargo.lock w/Cargo.lock
+index 99c0144..b7a5c4d 100644
+--- i/Cargo.lock
++++ w/Cargo.lock
+@@ -51,7 +51,7 @@ dependencies = [
+  "rustls",
+  "rustls-native-certs",
+  "secp256k1 0.31.1",
+- "security-framework",
++ "security-framework 3.7.0",
+  "serde",
+  "serde_json",
+  "sha2",
+@@ -685,7 +685,7 @@ dependencies = [
+  "nostr 0.45.5",
+  "regex",
+  "secp256k1 0.31.1",
+- "security-framework",
++ "security-framework 3.7.0",
+  "serde",
+  "serde_json",
+  "sha2",
+@@ -714,12 +714,23 @@ dependencies = [
+  "dirs 6.0.0",
+  "keyring",
+  "nix 0.31.3",
+- "security-framework",
++ "security-framework 3.7.0",
+  "sha2",
+  "tempfile",
+  "zeroize",
+ ]
+ 
++[[package]]
++name = "buzz-editor-credentials"
++version = "0.1.0"
++dependencies = [
++ "buzz-credential-store",
++ "keyring",
++ "serde",
++ "serde_json",
++ "zeroize",
++]
++
+ [[package]]
+ name = "buzz-ifc"
+ version = "0.1.0"
+@@ -3023,6 +3034,8 @@ dependencies = [
+  "log",
+  "openssl",
+  "secret-service",
++ "security-framework 2.11.1",
++ "security-framework 3.7.0",
+  "windows-sys 0.60.2",
+  "zeroize",
+ ]
+@@ -4986,7 +4999,7 @@ dependencies = [
+  "openssl-probe",
+  "rustls-pki-types",
+  "schannel",
+- "security-framework",
++ "security-framework 3.7.0",
+ ]
+ 
+ [[package]]
+@@ -5014,7 +5027,7 @@ dependencies = [
+  "rustls-native-certs",
+  "rustls-platform-verifier-android",
+  "rustls-webpki",
+- "security-framework",
++ "security-framework 3.7.0",
+  "security-framework-sys",
+  "webpki-root-certs",
+  "windows-sys 0.61.2",
+@@ -5222,6 +5235,19 @@ dependencies = [
+  "zbus 4.4.0",
+ ]
+ 
++[[package]]
++name = "security-framework"
++version = "2.11.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
++dependencies = [
++ "bitflags 2.13.1",
++ "core-foundation 0.9.4",
++ "core-foundation-sys",
++ "libc",
++ "security-framework-sys",
++]
++
+ [[package]]
+ name = "security-framework"
+ version = "3.7.0"
+diff --git i/Cargo.toml w/Cargo.toml
+index d0bb90e..b62d088 100644
+--- i/Cargo.toml
++++ w/Cargo.toml
+@@ -1,4 +1,4 @@
+ [workspace]
+-members = ["crates/agent-command", "crates/pairing", "crates/plugin-manager", "crates/agent-controller", "crates/credential-store", "crates/ifc-core", "crates/buzz-ifc", "crates/nsec-backup", "src-tauri"]
++members = ["crates/editor-credentials", "crates/agent-command", "crates/pairing", "crates/plugin-manager", "crates/agent-controller", "crates/credential-store", "crates/ifc-core", "crates/buzz-ifc", "crates/nsec-backup", "src-tauri"]
+ default-members = ["crates/plugin-manager"]
+ resolver = "2"
+diff --git i/biome.json w/biome.json
+index 7d8565c..12f199c 100644
+--- i/biome.json
++++ w/biome.json
+@@ -10,6 +10,7 @@
+     "includes": [
+       "**",
+       "!!**/node_modules",
++      "!!portable/libraries",
+       "!!.hermit",
+       "!!dist",
+       "!!dist-author",
+diff --git i/crates/plugin-manager/src/lib.rs w/crates/plugin-manager/src/lib.rs
+index a8d0149..e974b9b 100644
+--- i/crates/plugin-manager/src/lib.rs
++++ w/crates/plugin-manager/src/lib.rs
+@@ -407,6 +407,10 @@ pub fn bundled_manifests() -> Vec<Manifest> {
+         }
+     });
+     vec![
++        serde_json::from_str(include_str!(
++            "../../../src/bundled/editor-lab/manifest.json"
++        ))
++        .expect("editor lab manifest"),
+         serde_json::from_str(include_str!("../../../src/bundled/huddles/manifest.json"))
+             .expect("huddles manifest"),
+         builderlab,
+@@ -2249,6 +2253,32 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn editor_lab_is_listed_and_grants_only_its_enabled_worker() {
++        let temp = tempfile::tempdir().unwrap();
++        let manager = Manager::open(Some(temp.path().into()), "test", false).unwrap();
++        let catalog = manager.catalog().unwrap();
++        let editor = catalog
++            .plugins
++            .iter()
++            .find(|plugin| plugin.manifest.id == "local.editor-lab")
++            .expect("Editor Lab must be discoverable in desktop Manage plugins");
++        assert_eq!(editor.manifest.name, "Editor Lab");
++        assert!(!editor.enabled);
++        editor.manifest.validate().unwrap();
++        assert!(manager.host_grants("local.editor-lab", "bundled").is_err());
++        manager.change("enable", "local.editor-lab").unwrap();
++        let grants = manager.host_grants("local.editor-lab", "bundled").unwrap();
++        assert_eq!(grants.processes.len(), 1);
++        assert_eq!(grants.processes[0].id, "editor-repository");
++        assert_eq!(grants.processes[0].program, "buzz-editor-host");
++        assert!(grants.processes[0].bundled);
++        assert!(grants.commands.is_empty());
++        assert!(!grants.files);
++        manager.change("disable", "local.editor-lab").unwrap();
++        assert!(manager.host_grants("local.editor-lab", "bundled").is_err());
++    }
++
+     #[test]
+     fn host_grants_follow_enabled_bundled_manifest() {
+         let temp = tempfile::tempdir().unwrap();
+diff --git i/docs/buzz-help.md w/docs/buzz-help.md
+index 97febc6..9629c6c 100644
+--- i/docs/buzz-help.md
++++ w/docs/buzz-help.md
+@@ -104,3 +104,75 @@ the interface unless an available tool actually supports that action.
+   When helping someone explore a community, use only your available access and
+   say when information is incomplete or inaccessible. Never join, invite, share,
+   or change community content merely to explain how Buzz works.
++
++## Local Editor Lab experiment
++
++Canvas retains the original Build from copy brief and saved-copy selector. With an available Buzz agent, it supplies the selected copy, visual reference and original build instructions through Buzz Canvas tools. The request admits read-only comparison of projects saved inside the isolated editor lab and revision-checked template insertion into the current design. It does not adopt original CopyOS projects. Missing community/agent errors preserve the form for retry. Closing the form cancels pending conversation admission; a late result cannot close a newer brief. An already admitted request is not rolled back by closing the form. Live agent generation and native conversation interruption remain unverified.
++
++The Canvas brief's fields use Buzz Field, Input, Textarea, Select and Checkbox components. Its original six build types, saved-copy choices, file-text action, reference selection and notes remain. The form keeps its values across Buzz appearance settings and disconnected errors; its lower fields remain keyboard reachable in a narrow window. Broader Canvas narrow-window layout and connected desktop acceptance remain open.
++
++Docs retains its original passage comments and version history. In the web lab, comments/replies, resolve/reopen, rich bold formatting, named versions, restoration as a new version and saved-thread URL reload have been exercised against isolated data. Restoring content retains the later saved versions and discussion. This does not establish live agent review, sharing, native desktop access or complete rich-content/import parity.
++
++Version history uses Buzz's shared Dialog, SidebarNavigation/NavigationSection/NavigationItem, fields, checkbox and buttons while retaining the original version-loading, comparison, naming, pagination and revision-checked restoration logic. A pending write prevents dismissal; a stale restore keeps the selected version and error available for recovery. Narrow dialog widths stack the version list above its original preview. This dialog remains owned by the document's existing local history state and does not add a route.
++
++The web lab's original Markdown import and Markdown/PDF/Word download actions have been exercised with formatted text, a table and lists. Document content retains its original nested bullet and numbered-list markers under Buzz's reset; rich task checkboxes retain their original behavior. Word structure and PDF rendering were checked separately. Selecting, creating, duplicating or importing a document updates its Buzz address after the original model accepts it. Explicit tab choices update that address too; Back/Forward and reload reopen the visited document. A completed operation from a departed view cannot redirect the current visit. Native desktop downloads, cross-device sharing and the complete import/export matrix remain unverified.
++
++The posted-comment edit form uses Buzz Field/Textarea and Button controls. Its original edit draft survives reload; reviewing another author's change keeps your composition, and failed saves remain retryable. Enter submits; Shift+Enter keeps a new line. Other comment-panel controls still need native-control adoption.
++
++Enable Editor Lab through your profile menu → Plugins → Manage plugins in each separate lab profile. It is listed in both the browser and desktop catalogues and starts disabled.
++
++This isolated source checkout includes an optional Editor Lab plugin with top-bar destinations for the original CopyOS Page Builder, Canvas, and Docs. They use their original editors and isolated local repositories; desktop uses an owned repository worker, while web development accesses the same repositories through the development server. Docs retains its library, tabs, rich editor, comments, history, sharing controls, and review flows. Canvas and Docs drafts also use browser storage. Buzz agent selection, contextual conversations, and scoped editing tools are connected, but live collaboration, cross-device sharing, and packaged desktop operation have not been validated. This experiment is not installed in the existing Buzz desktop application.
++
++Choose an available agent in an editor to open its native Buzz conversation; selection itself sends no message. In Canvas, once that composer is available, the original selection-mention and Mark actions add context to its draft for you to review and send. Mark queues its original cropped PNG through Buzz’s existing attachment controls and preserves existing text/files. Uploads follow Buzz’s normal availability, editing and recording restrictions; a refused attachment is reported and the note records that no picture was attached. Cancelling Mark, changing pages or leaving Canvas discards a pending crop. Native uploads and live Strategist receipt remain unverified.
++
++Canvas Assets retains the original Higgsfield image-generation form, output history, cancellation and placement actions. This feature requires the desktop lab: its API credential uses a separate lab entry in the OS credential store, and only the owned repository worker can read it. Entering a key does not start generation; Generate starts a provider request. The web preview refuses credential and generation operations. Service and UI tests use simulated credentials/provider responses; OS credential storage, real generation and native placement still require desktop acceptance.
++
++The Builder's clone and editable Shopify requests load their original guides through `buzz_pages prepareWorkflow`. Supporting clone scripts and references are placed in the editor's isolated project directory; an agent uses its normal Buzz execution tools and approval rules. Shopify schema/template checks run through `buzz_pages validateShopifyExport`; a passing result does not establish Liquid rendering, visual fidelity or a successful Shopify upload. Agent-driven clone and Shopify export journeys have not yet been verified.
++
++Page Builder's Add section and Add element actions keep their original libraries and inline editing. Its native Export menu retains HTML, Shopify, Vercel, page-copy and JSON choices and supports keyboard navigation. Reusable sections save independent copies in the local shared library for your Buzz workspaces.
++
++The installed Buzz Editors package can also read imported reusable-section media and fonts from its shared library using `library-assets/` paths. Those assets remain available when the section is inserted in a different editor workspace; they do not require the original CopyOS workspace.
++
++The Builder start chooser arranges New page, Existing strategy, Clone website and Existing file in a two-column grid, with page-plus, document, globe and folder icons. Very narrow windows retain a single column.
++
++On Linux, website cloning checks that GStreamer’s automatic audio output plugin is available before sending the request to an agent. Missing media support leaves the form open with setup instructions. Arch/Omarchy requires `sudo pacman -S --needed gst-plugins-good`, followed by fully quitting and reopening Buzz. Installing this system package requires administrator authorization; the editor plugin does not install it silently.
++
++The Builder toolbar has a styled Page menu with checked page choices, Clone and Delete. The adjacent New page (+) icon opens the original blank-page form; Import page opens the source chooser with Clone website selected, retaining strategy and existing-file options. Canvas-linked pages retain Return to Canvas. Unsaved edits, pending saves and agent handoffs block this action. Return to saved pages restores the previous page selection. Blank pages can be created locally; agent workflows require an available Buzz agent; project-subfolder picking uses Buzz Desktop’s native picker.
++
++Builder agent workflows include an explicit request reference. When the chosen agent passes that reference while creating the main result page, the conversation shows Open created page. It does not claim the build is finished or navigate automatically. Opening uses the original editor’s loading/save/draft guards and leaves its page picker unlocked. Switching workspaces, agents or sessions removes the view’s observer; unrelated page creation does not claim the workflow result. Live existing-agent acceptance and connected desktop interruption remain unverified.
++
++The editor conversation uses Buzz's native model/effort session controls. Interrupt and Start a new session revoke the matching editor's Docs request permission, Builder result handoff and Canvas comparison access before invoking the provider. Compaction retains those request permissions. Other agents, chats and threads do not revoke them. A refused session action keeps the conversation draft and allows retry; revocation does not roll back an already accepted repository write. Actual connected desktop interruption and live existing-agent behavior still need acceptance.
++
++Builder’s existing-page workflow uses Buzz Desktop’s folder picker, starting at the isolated editor project. Choose an existing subfolder there; selecting the project root, another workspace, a file or a symbolic link is refused. Cancelling preserves the form. This matches the original project-subfolder workflow and does not copy or adopt an external project. The web preview reports that native picking requires desktop. The selected agent can use `buzz_pages getWorkspace` to resolve that same project root before importing editable sections.
++
++Standalone HTML export retains the original page renderer and embeds local images, media, responsive image candidates, CSS imports/backgrounds and fonts. It preserves external URLs without fetching them. Missing files, escaped paths and linked files reject; a failed export keeps the previous successful HTML. Stylesheet integrity hashes are recalculated for the embedded CSS. The output and unique decoded resources must each fit the host’s 50 MB file limit. Local script/frame/object bundles, local base URLs and embedding under authored CSP still require a reviewed project bundle; standalone export refuses those cases explicitly. CSP documents with no local embedding and external base URLs retain their original behavior. Complete Vercel/Shopify asset bundles, nested SVG/HTML resource graphs and script bundling remain open.
++
++Builder previews can read local images and stylesheets from the isolated editor workspace through the repository worker. Local CSS imports retain their order, media/support/layer conditions and stylesheet-relative assets, including imports inside inline styles. Temporary preview URLs and expanded inline imports return to portable authored content before saving edits. Page refresh also checks for changed local assets; save or resolve unsaved edits before using Refresh pages. Missing assets and import cycles appear as resource errors; linked files and paths outside that workspace are refused. Editable and full-page previews load local project fonts into their own documents, retain authored font CSS when saving, and remove registrations when the preview closes. Conditional font rules follow media/support conditions. Font source fallbacks and embedded fonts are supported. Sandboxed thumbnails retain their original restrictions; thumbnail fonts, actual desktop font behavior and complete exported asset bundles remain unverified. External stylesheet and font URLs remain subject to the host's CSP.
++
++Canvas Mark/comment composition uses Buzz Field/Textarea/Button controls, retaining original point/layer targets and keyboard submission. Ctrl+Enter or Command+Enter submits; composing an IME character does not. Failed or refused submissions keep the note. The form stays inside its Canvas area. Resolve, Reopen and Delete use shared buttons. The comments drawer and other Canvas controls still have native-framing and narrow-layout gaps.
++
++Page Builder’s Vercel/static Shopify folder exports now carry supported local stylesheets, nested CSS imports, fonts, images, media and srcset references. Managed Canvas images retain the original copied-file/Liquid behavior. Export returns a fresh snapshot folder, preserving earlier exports and manual changes to them; it does not rewrite the saved page. Missing assets fail before publication. Local script/nested-document bundles, CSP-restricted embedding, hosted deployment and the live agent Shopify workflow remain incomplete.
++
++
++### Installed Buzz Editors plugin
++
++The optional Linux x64 Buzz Editors local package adds Canvas, Docs and Page Builder to normal Buzz. Enable it in Settings → Plugins after reviewing its access. It uses normal Buzz’s identity, agents and conversations; the separate Editor Lab launcher is not required. Saved editor files live in the normal app data folder under `editor-workspaces`. The preparation command can copy saved lab files without changing the originals; unsaved drafts and browser preferences are not copied. Native enablement and connected collaboration still require acceptance in the installed app.
++
++### Editor workspace branding (isolated lab)
++
++Editor Lab’s Page Builder, Canvas and Docs share a Solo workspace selector above the editor, even when chat is hidden. It lists existing Buzz Solo workspaces; it does not create Team workspaces. No workspace keeps the previous unfiled editor files. Named workspaces have separate local editor files and brand settings; selecting one does not move existing work. Switching requires confirmation to leave unsaved edits, and a working agent turn cannot be rebound to another workspace.
++
++Open Brand settings above an editor or from Settings → Brand settings, then choose an existing Solo workspace. Save original CopyOS brand profiles (positioning, audience, voice, differentiators and guardrails) and a website styleguide from pasted CSS or a `.css` file. The original CSS token extraction supplies Canvas’s brand controls. Imported CSS is content and never styles Buzz. Existing guides require the current content revision before replacement; a conflict preserves the draft until explicit reload. Import website in Page Builder opens the existing clone workflow. Existing editor-bound Buzz agents use `buzz_brand readBrandContext`, `createBrand` and `saveStyleGuide`; branded work should read the selected workspace’s context first. These files are local to the lab, not shared or synced by the community relay. Native GUI and live-agent acceptance remain unverified for this addition.
++
++
++Builder interaction fixes in the isolated lab: Add element keeps the original library and insertion behavior; during a drag the library becomes translucent and stops intercepting the target, and editable frames accept drag-enter and drag-over. A successful drop closes the library; cancelling restores it. The persistent Style action opens the existing section/element inspector without requiring the floating toolbar. The inspector reads stylesheet-controlled typography from the selected rendered element instead of substituting default font values. Completing a mouse or keyboard text selection updates the inspector to that element and section while preserving the highlighted range. Selection changes retain editing handlers for newly dropped elements. Switching pages clears the old selection and review state before the new page becomes interactive. Comments retain their stable element IDs and support Ctrl/Cmd+Enter outside IME composition. Mark records each stroke’s section ID and CSS-pixel geometry; Add to chat input and Queue prepare the existing Buzz composer draft, while Send submits the request. Image overlays still do not attach image files; the feedback explicitly says so rather than claiming the agent received them.
++
++The editable Builder frame admits parent-owned event callbacks on desktop WebKit and blocks authored scripts through a Content Security Policy placed before imported content. Inline handlers and external scripts remain disabled; an authored later policy cannot relax the first policy. Static preview frames retain their existing sandbox. Desktop WebKit interaction acceptance still requires a native retry.
++
++Builder Comment placement uses a compact neutral comment-bubble cursor with its hotspot at the bubble tail. Mark uses the system crosshair.
++
++Page Builder uses Buzz’s shared resize handle between chat and the editor. Drag the divider, focus it and use Left/Right arrows, or double-click to restore the default split. Narrow windows retain the stacked layout.
++
++Docs slash suggestions preserve manual scrolling across equivalent editor renders; keyboard selection still reveals its selected row. Checklist checkboxes and block grips align with the first text line, including the larger narrow-layout grip target.
++
++Page Builder’s Page dropdown offers Clone current page and Delete current page. Clone retains all saved variations and comments with new independent identities; a converted page becomes an independent editable copy. Delete asks for confirmation, retains shared assets and moves the saved page to workspace-local trash. Restore deleted page reverses the deletion while its notice is available. Saved revision checks and the existing draft/agent guards protect management actions. Chat uses smaller surrounding insets and a bounded composer in the editor pane. Docs body-block grips measure the first visible text line, including heading margins and code padding, instead of using a fixed checklist offset.
+diff --git i/package.json w/package.json
+index 3710617..9379189 100644
+--- i/package.json
++++ w/package.json
+@@ -8,9 +8,10 @@
+     "node": ">=24"
+   },
+   "scripts": {
+-    "dev": "vite --force",
+-    "dev:desktop": "vite --strictPort --force",
+-    "build": "pnpm typecheck && vite build",
++    "editors:build": "pnpm editors:install && node portable/copyos-apps/build.mjs && node scripts/build-editor-host.mjs && node scripts/audit-editor-source.mjs",
++    "dev": "pnpm editors:build && vite --force",
++    "dev:desktop": "pnpm editors:build && vite --strictPort --force",
++    "build": "pnpm editors:build && pnpm typecheck && vite build",
+     "preview": "vite preview",
+     "author:build": "node scripts/build-author.mjs",
+     "buzz-mcp": "vite build --config vite.buzz-mcp.config.ts",
+@@ -35,7 +36,8 @@
+     "design:check": "node scripts/design-system/check-type.mjs && node scripts/design-system/check-color.mjs && node scripts/design-system/check-contrast.mjs && node scripts/design-system/check-app-foundations.mjs && node scripts/design-system/check-icons.mjs && node scripts/design-system/check-adoption.mjs",
+     "design:census": "node scripts/design-system/token-consumers.mjs",
+     "design:test": "vitest run --config vitest.design.config.ts",
+-    "design:test:browser": "pnpm build && pnpm design:build && playwright test --config tests/fixtures/design-system/playwright.config.ts"
++    "design:test:browser": "pnpm build && pnpm design:build && playwright test --config tests/fixtures/design-system/playwright.config.ts",
++    "editors:install": "pnpm --dir portable install --frozen-lockfile"
+   },
+   "dependencies": {
+     "@base-ui/react": "1.9.0",
+@@ -85,7 +87,8 @@
+     "remark-gfm": "4.0.1",
+     "sonner": "2.0.8",
+     "virtua": "0.53.5",
+-    "yaml": "2.9.1"
++    "yaml": "2.9.1",
++    "zod": "4.4.3"
+   },
+   "devDependencies": {
+     "@biomejs/biome": "2.5.14",
+@@ -103,9 +106,13 @@
+     "@types/react-dom": "19.2.7",
+     "@vitejs/plugin-react": "6.1.1",
+     "jsdom": "30.1.0",
++    "parse5": "8.0.1",
+     "postcss": "8.5.28",
++    "postcss-value-parser": "4.2.0",
+     "rolldown": "1.2.7",
++    "srcset": "5.0.3",
+     "tailwindcss": "4.3.3",
++    "tar": "^7.5.22",
+     "typescript": "7.0.2",
+     "undici": "7.29.1",
+     "vite": "8.3.0",
+diff --git i/pnpm-lock.yaml w/pnpm-lock.yaml
+index b838037..82da71d 100644
+--- i/pnpm-lock.yaml
++++ w/pnpm-lock.yaml
+@@ -157,6 +157,9 @@ importers:
+       yaml:
+         specifier: 2.9.1
+         version: 2.9.1
++      zod:
++        specifier: 4.4.3
++        version: 4.4.3
+     devDependencies:
+       '@biomejs/biome':
+         specifier: 2.5.14
+@@ -203,15 +206,27 @@ importers:
+       jsdom:
+         specifier: 30.1.0
+         version: 30.1.0(@noble/hashes@2.0.1)
++      parse5:
++        specifier: 8.0.1
++        version: 8.0.1
+       postcss:
+         specifier: 8.5.28
+         version: 8.5.28
++      postcss-value-parser:
++        specifier: 4.2.0
++        version: 4.2.0
+       rolldown:
+         specifier: 1.2.7
+         version: 1.2.7
++      srcset:
++        specifier: 5.0.3
++        version: 5.0.3
+       tailwindcss:
+         specifier: 4.3.3
+         version: 4.3.3
++      tar:
++        specifier: ^7.5.22
++        version: 7.5.22
+       typescript:
+         specifier: 7.0.2
+         version: 7.0.2
+@@ -445,6 +460,10 @@ packages:
+   '@fontsource/jetbrains-mono@5.3.0':
+     resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
+ 
++  '@isaacs/fs-minipass@4.0.1':
++    resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
++    engines: {node: '>=18.0.0'}
++
+   '@jridgewell/gen-mapping@0.3.13':
+     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
+ 
+@@ -1105,6 +1124,10 @@ packages:
+   character-reference-invalid@2.0.1:
+     resolution: {integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==}
+ 
++  chownr@3.0.0:
++    resolution: {integrity: sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==}
++    engines: {node: '>=18'}
++
+   classnames@2.5.1:
+     resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+ 
+@@ -1659,6 +1682,14 @@ packages:
+     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
+     engines: {node: '>=4'}
+ 
++  minipass@7.1.3:
++    resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
++    engines: {node: '>=16 || 14 >=14.17'}
++
++  minizlib@3.1.0:
++    resolution: {integrity: sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==}
++    engines: {node: '>= 18'}
++
+   motion-dom@12.43.0:
+     resolution: {integrity: sha512-azKON4d9S65PEoFUiQTMTgPheEmzf2QngdRc50AKfJp9Q9mmcBVw22c8eMq9k8kxOFHdL7+WZY7N/5F/lwiDag==}
+ 
+@@ -1732,6 +1763,9 @@ packages:
+     engines: {node: '>=20'}
+     hasBin: true
+ 
++  postcss-value-parser@4.2.0:
++    resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
++
+   postcss@8.5.28:
+     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
+     engines: {node: ^10 || ^12 || >=14}
+@@ -1872,6 +1906,10 @@ packages:
+   space-separated-tokens@2.0.2:
+     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
+ 
++  srcset@5.0.3:
++    resolution: {integrity: sha512-AZswtOXIsu0LeHdo6YY7d0r2pCH2Rl1D8ae1utvXUX4GxG3RggsVUAOFX1r8RI4YHFMYb4g89+UBPBv3mNUU2g==}
++    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
++
+   std-env@4.3.0:
+     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
+ 
+@@ -1895,6 +1933,10 @@ packages:
+     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
+     engines: {node: '>=6'}
+ 
++  tar@7.5.22:
++    resolution: {integrity: sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==}
++    engines: {node: '>=18'}
++
+   tinybench@6.2.2:
+     resolution: {integrity: sha512-nIZ2N2dFpjBsg2hgitKu7mA+FvsIJuGJOwysRngmVRRmWgR/UyPjwJj8c/fT/dhm8EkHnF5EOogRf+0Z2qrimA==}
+     engines: {node: '>=20.0.0'}
+@@ -2129,11 +2171,18 @@ packages:
+   xmlchars@2.2.0:
+     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
+ 
++  yallist@5.0.0:
++    resolution: {integrity: sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==}
++    engines: {node: '>=18'}
++
+   yaml@2.9.1:
+     resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+     engines: {node: '>= 14.6'}
+     hasBin: true
+ 
++  zod@4.4.3:
++    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
++
+   zod@4.6.5:
+     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+ 
+@@ -2313,6 +2362,10 @@ snapshots:
+ 
+   '@fontsource/jetbrains-mono@5.3.0': {}
+ 
++  '@isaacs/fs-minipass@4.0.1':
++    dependencies:
++      minipass: 7.1.3
++
+   '@jridgewell/gen-mapping@0.3.13':
+     dependencies:
+       '@jridgewell/sourcemap-codec': 1.6.0
+@@ -2781,6 +2834,8 @@ snapshots:
+ 
+   character-reference-invalid@2.0.1: {}
+ 
++  chownr@3.0.0: {}
++
+   classnames@2.5.1: {}
+ 
+   comma-separated-tokens@2.0.3: {}
+@@ -3476,6 +3531,12 @@ snapshots:
+ 
+   min-indent@1.0.1: {}
+ 
++  minipass@7.1.3: {}
++
++  minizlib@3.1.0:
++    dependencies:
++      minipass: 7.1.3
++
+   motion-dom@12.43.0:
+     dependencies:
+       motion-utils: 12.39.0
+@@ -3538,6 +3599,8 @@ snapshots:
+     dependencies:
+       playwright-core: 1.63.0
+ 
++  postcss-value-parser@4.2.0: {}
++
+   postcss@8.5.28:
+     dependencies:
+       nanoid: 3.3.18
+@@ -3735,6 +3798,8 @@ snapshots:
+ 
+   space-separated-tokens@2.0.2: {}
+ 
++  srcset@5.0.3: {}
++
+   std-env@4.3.0: {}
+ 
+   stringify-entities@4.0.4:
+@@ -3758,6 +3823,14 @@ snapshots:
+ 
+   tapable@2.3.3: {}
+ 
++  tar@7.5.22:
++    dependencies:
++      '@isaacs/fs-minipass': 4.0.1
++      chownr: 3.0.0
++      minipass: 7.1.3
++      minizlib: 3.1.0
++      yallist: 5.0.0
++
+   tinybench@6.2.2: {}
+ 
+   tinyexec@1.3.1: {}
+@@ -3943,8 +4016,12 @@ snapshots:
+ 
+   xmlchars@2.2.0: {}
+ 
++  yallist@5.0.0: {}
++
+   yaml@2.9.1: {}
+ 
++  zod@4.4.3: {}
++
+   zod@4.6.5: {}
+ 
+   zwitch@2.0.4: {}
+diff --git i/pnpm-workspace.yaml w/pnpm-workspace.yaml
+index 703a17c..00febbd 100644
+--- i/pnpm-workspace.yaml
++++ w/pnpm-workspace.yaml
+@@ -2,3 +2,5 @@ patchedDependencies:
+   '@base-ui/react@1.9.0': patches/@base-ui__react@1.9.0.patch
+   sonner@2.0.8: patches/sonner@2.0.8.patch
+   virtua@0.53.5: patches/virtua@0.53.5.patch
++packages:
++  - .
+diff --git i/src/bundled/inbox/ChannelPreview.tsx w/src/bundled/inbox/ChannelPreview.tsx
+index 783fd74..69a5212 100644
+--- i/src/bundled/inbox/ChannelPreview.tsx
++++ w/src/bundled/inbox/ChannelPreview.tsx
+@@ -23,6 +23,7 @@ export function ChannelPreview({
+   onDraftSaved,
+   label = "Conversation preview",
+   autoFocus = false,
++  onSessionControl,
+ }: {
+   /** The conversation's preview label, such as a DM's participants. */
+   channelName: string;
+@@ -32,6 +33,8 @@ export function ChannelPreview({
+   label?: string;
+   /** Focus the composer when it mounts, as a user-triggered handoff. */
+   autoFocus?: MessageComposerProps["autoFocus"];
++  /** Owner notification before a native session action in this preview's composer. */
++  onSessionControl?: MessageComposerProps["onSessionControl"];
+ }) {
+   const { session, channelId } = useConversation();
+   const window = useChannelWindow(session.channels, channelId);
+@@ -144,6 +147,7 @@ export function ChannelPreview({
+           onSend={setSentId}
+           onDraftSaved={onDraftSaved}
+           autoFocus={autoFocus}
++          onSessionControl={onSessionControl}
+         />
+       </section>
+     </MessageEditScope>
+diff --git i/src/bundled/index.ts w/src/bundled/index.ts
+index f9c14ab..59ce976 100644
+--- i/src/bundled/index.ts
++++ w/src/bundled/index.ts
+@@ -1,3 +1,5 @@
++import editorLabManifest from "./editor-lab/manifest.json";
++import * as editorLab from "./editor-lab";
+ import voiceNotesManifest from "./voice-notes/manifest.json";
+ import * as voiceNotes from "./voice-notes";
+ import pairingManifest from "./pairing/manifest.json";
+@@ -64,6 +66,11 @@ import relayNotesManifest from "./relay-notes/manifest.json";
+ import * as relayNotes from "./relay-notes";
+ 
+ export const bundledPlugins: readonly BundledPlugin[] = [
++  {
++    manifest: { ...editorLabManifest, apiVersion: 1 },
++    module: editorLab,
++    enabledByDefault: false,
++  },
+   {
+     manifest: { ...relayNotesManifest, apiVersion: 1 },
+     module: relayNotes,
+diff --git i/src/features/conversation/ComposerTools.tsx w/src/features/conversation/ComposerTools.tsx
+index 74e5c8e..82ea5d8 100644
+--- i/src/features/conversation/ComposerTools.tsx
++++ w/src/features/conversation/ComposerTools.tsx
+@@ -75,6 +75,7 @@ function OwnedTool({
+         | "insertMentions"
+         | "replaceRecipients"
+         | "replaceRecipientsIfEmpty"
++        | "attachFiles"
+         | "insertResource"
+         | "focus"
+         | "capture"
+@@ -113,6 +114,11 @@ function OwnedTool({
+         active()
+           ? (current.current.replaceRecipientsIfEmpty?.(recipients) ?? false)
+           : false,
++      attachFiles: (files) =>
++        active()
++          ? (current.current.attachFiles?.(files) ??
++            "Attachments are unavailable on this connection.")
++          : "The message can't be edited right now",
+       insertResource: (resource) =>
+         active()
+           ? current.current.insertResource(resource)
+@@ -130,12 +136,13 @@ function OwnedTool({
+   const Tool = tool.component;
+   // A host that cannot attach withholds capture, so capture tools hide.
+   if (!commands) return null;
+-  const { capture, ...rest } = commands;
++  const { capture, attachFiles, ...rest } = commands;
+   return (
+     <Tool
+       {...props}
+       {...rest}
+       {...(props.capture && capture ? { capture } : {})}
++      {...(props.attachFiles && attachFiles ? { attachFiles } : {})}
+       {...opener}
+     />
+   );
+diff --git i/src/features/conversation/contracts.ts w/src/features/conversation/contracts.ts
+index 6eb7fbb..5bdb4b9 100644
+--- i/src/features/conversation/contracts.ts
++++ w/src/features/conversation/contracts.ts
+@@ -71,6 +71,10 @@ export type ComposerToolProps = Readonly<{
+    * the link, escapes the label and sends exactly `[label](uri)` there; the draft
+    * keeps it after tool removal. Otherwise returns the host's user-facing reason. */
+   insertResource(resource: ComposerResource): true | string;
++  /** Queue files through the host's existing attachment draft and upload controls.
++   * True means accepted into the draft, not uploaded or sent; otherwise returns
++   * a user-facing refusal. Revoked with the tool/destination. Older hosts may omit. */
++  attachFiles?(files: readonly File[]): true | string;
+   capture?(
+     component: ComponentType<ComposerCaptureProps>,
+   ): (() => void) | false;
+diff --git i/src/features/messages/ComposerModels.tsx w/src/features/messages/ComposerModels.tsx
+index 91200ff..bd98d80 100644
+--- i/src/features/messages/ComposerModels.tsx
++++ w/src/features/messages/ComposerModels.tsx
+@@ -53,6 +53,17 @@ export type DraftPicks = Readonly<
+   Record<string, RunPick & Readonly<{ type?: string }>>
+ >;
+ 
++/** Synchronously notify the conversation owner before a native session action; throwing refuses the action.
++ * @param pubkey - Agent whose session control the owner activated.
++ * @param place - Exact conversation or thread targeted by that control.
++ * @param action - Native action requested before provider invocation.
++ */
++export type ComposerSessionControl = (
++  pubkey: string,
++  place: SessionPlace,
++  action: SessionControlAction,
++) => void;
++
+ /** Model and effort for the next run of each mentioned agent of the viewer's
+  * that offers a choice. Session controls act immediately on this conversation. */
+ export function ComposerModels({
+@@ -65,6 +76,7 @@ export function ComposerModels({
+   onResolved,
+   startsThread,
+   place,
++  onSessionControl,
+ }: {
+   pubkeys: readonly string[];
+   profiles: ProfileQueries;
+@@ -77,6 +89,7 @@ export function ComposerModels({
+    * does, so a thread-scoped agent has no session to act on. */
+   startsThread: boolean;
+   place: SessionPlace;
++  onSessionControl?: ComposerSessionControl | undefined;
+ }) {
+   const [open, setOpen] = useState(false);
+   const mentioned = useMentionModels(pubkeys);
+@@ -219,6 +232,7 @@ export function ComposerModels({
+                   media,
+                 )}
+                 place={place}
++                onSessionControl={onSessionControl}
+                 value={value[choice.pubkey] ?? {}}
+                 disabled={disabled}
+                 pick={(next) => pick(choice.pubkey, next)}
+@@ -246,6 +260,7 @@ function AgentChoice({
+   disabled,
+   pick,
+   thumb,
++  onSessionControl,
+ }: {
+   choice: MentionModelChoice;
+   avatarSrc: string | undefined;
+@@ -254,6 +269,7 @@ function AgentChoice({
+   disabled: boolean;
+   pick(next: RunPick): void;
+   thumb?: Ref<HTMLInputElement>;
++  onSessionControl?: ComposerSessionControl | undefined;
+ }) {
+   const [feedback, setFeedback] = useState("");
+   if (choice.loading)
+@@ -345,6 +361,7 @@ function AgentChoice({
+               name={choice.name}
+               place={place}
+               onFeedback={setFeedback}
++              onSessionControl={onSessionControl}
+             />
+           )
+         }
+@@ -400,11 +417,13 @@ function SessionActions({
+   name,
+   place,
+   onFeedback,
++  onSessionControl,
+ }: {
+   pubkey: string;
+   name: string;
+   place: SessionPlace;
+   onFeedback(message: string): void;
++  onSessionControl?: ComposerSessionControl | undefined;
+ }) {
+   const agents = useContext(AgentsContext);
+   const state = useSessionState(agents, [pubkey], place);
+@@ -421,6 +440,7 @@ function SessionActions({
+     onFeedback("");
+     setStarted(undefined);
+     try {
++      onSessionControl?.(pubkey, place, action);
+       // Its membership in the selected community; a pubkey alone is refused.
+       await agents?.session(agents.find(pubkey)?.key ?? pubkey, place, action);
+       if (action === "new") {
+diff --git i/src/features/messages/MessageComposer.test.tsx w/src/features/messages/MessageComposer.test.tsx
+index 27c4866..beec1a5 100644
+--- i/src/features/messages/MessageComposer.test.tsx
++++ w/src/features/messages/MessageComposer.test.tsx
+@@ -3676,7 +3676,14 @@ it("refreshes unavailable session buttons when runner ownership changes without
+ 
+ it("acts on the idle session immediately and keeps Send independent while active", async () => {
+   const agents = sessionAgents("channel");
+-  const h = mount({}, undefined, undefined, agents);
++  const order: string[] = [];
++  const onSessionControl = vi.fn(() => {
++    order.push("owner");
++  });
++  vi.mocked(agents.session).mockImplementation(async () => {
++    order.push("native");
++  });
++  const h = mount({ onSessionControl }, undefined, undefined, agents);
+   await h.user.type(h.input(), "tidy up");
+   await h.user.click(screen.getByRole("button", { name: "First Honey" }));
+   await h.user.click(
+@@ -3695,6 +3702,12 @@ it("acts on the idle session immediately and keeps Send independent while active
+   expect(fresh).not.toHaveAttribute("aria-disabled", "true");
+   expect(interrupt).toHaveAttribute("aria-disabled", "true");
+   await h.user.click(compact);
++  expect(onSessionControl).toHaveBeenLastCalledWith(
++    first.pubkey,
++    { channelId: "channel" },
++    "compact",
++  );
++  expect(order).toEqual(["owner", "native"]);
+   expect(agents.session).toHaveBeenCalledWith(
+     first.pubkey,
+     { channelId: "channel" },
+@@ -3702,6 +3715,11 @@ it("acts on the idle session immediately and keeps Send independent while active
+   );
+   expect(h.messages.send).not.toHaveBeenCalled();
+   await h.user.click(fresh);
++  expect(onSessionControl).toHaveBeenLastCalledWith(
++    first.pubkey,
++    { channelId: "channel" },
++    "new",
++  );
+   expect(agents.session).toHaveBeenLastCalledWith(
+     first.pubkey,
+     { channelId: "channel" },
+@@ -3713,7 +3731,13 @@ it("acts on the idle session immediately and keeps Send independent while active
+   expect(interrupt).not.toHaveAttribute("aria-disabled", "true");
+   await h.user.click(compact);
+   expect(agents.session).toHaveBeenCalledTimes(2);
++  expect(onSessionControl).toHaveBeenCalledTimes(2);
+   await h.user.click(interrupt);
++  expect(onSessionControl).toHaveBeenLastCalledWith(
++    first.pubkey,
++    { channelId: "channel" },
++    "interrupt",
++  );
+   expect(agents.session).toHaveBeenLastCalledWith(
+     first.pubkey,
+     { channelId: "channel" },
+@@ -3729,6 +3753,37 @@ it("acts on the idle session immediately and keeps Send independent while active
+   );
+ });
+ 
++it("keeps a native session action recoverable when its conversation owner refuses it", async () => {
++  const agents = sessionAgents("channel");
++  const onSessionControl = vi.fn<
++    NonNullable<MessageComposerProps["onSessionControl"]>
++  >(() => {
++    throw new Error("Editor request could not be closed");
++  });
++  const h = mount({ onSessionControl }, undefined, undefined, agents);
++  await h.user.type(h.input(), "Keep this draft");
++  await h.user.click(screen.getByRole("button", { name: "First Honey" }));
++  await h.user.click(
++    await screen.findByRole("button", { name: /Model.*effort/ }),
++  );
++  const fresh = await screen.findByRole("button", {
++    name: "Start a new session",
++  });
++  await h.user.click(fresh);
++  expect(agents.session).not.toHaveBeenCalled();
++  expect(
++    screen.getByText("Editor request could not be closed"),
++  ).toBeInTheDocument();
++  expect(h.input()).toHaveTextContent("Keep this draft");
++  onSessionControl.mockImplementation(() => {});
++  await h.user.click(fresh);
++  expect(agents.session).toHaveBeenCalledExactlyOnceWith(
++    first.pubkey,
++    { channelId: "channel" },
++    "new",
++  );
++});
++
+ it.each(["success", "failure", "interrupt"] as const)(
+   "blocks sending during compaction, preserves editing, and recovers after %s",
+   async (outcome) => {
+@@ -9619,6 +9674,7 @@ it.each(["disabled", "retarget", "unmount"])(
+ );
+ 
+ it("keeps snapshot paste from taking the attachment slot reserved for a recording", async () => {
++  let attach: ComposerToolProps["attachFiles"];
+   const empty: readonly never[] = [];
+   const tools: readonly Contribution<ComposerTool>[] = [
+     {
+@@ -9627,31 +9683,34 @@ it("keeps snapshot paste from taking the attachment slot reserved for a recordin
+       pluginId: "test",
+       revision: "1",
+       title: "Capture",
+-      component: ({ capture }) => (
+-        <button
+-          type="button"
+-          onClick={() =>
+-            capture?.(({ accept }) => (
+-              <button
+-                type="button"
+-                onClick={() =>
+-                  accept({
+-                    file: new File([new Uint8Array(100)], "voice-note.wav", {
+-                      type: "audio/wav",
+-                    }),
+-                    duration: 1,
+-                    waveform: [0.5],
+-                  })
+-                }
+-              >
+-                Finish recording
+-              </button>
+-            ))
+-          }
+-        >
+-          Start recording
+-        </button>
+-      ),
++      component: ({ capture, attachFiles }) => {
++        attach = attachFiles;
++        return (
++          <button
++            type="button"
++            onClick={() =>
++              capture?.(({ accept }) => (
++                <button
++                  type="button"
++                  onClick={() =>
++                    accept({
++                      file: new File([new Uint8Array(100)], "voice-note.wav", {
++                        type: "audio/wav",
++                      }),
++                      duration: 1,
++                      waveform: [0.5],
++                    })
++                  }
++                >
++                  Finish recording
++                </button>
++              ))
++            }
++          >
++            Start recording
++          </button>
++        );
++      },
+     },
+   ];
+   const h = await mountUploadComposer({
+@@ -9675,6 +9734,12 @@ it("keeps snapshot paste from taking the attachment slot reserved for a recordin
+   });
+   fireEvent.click(screen.getByRole("button", { name: "Start recording" }));
+   const finish = screen.getByRole("button", { name: "Finish recording" });
++  act(() =>
++    expect(attach?.([attachmentFile("mark.png")])).toBe(
++      "Finish recording before attaching new files.",
++    ),
++  );
++  expect(screen.queryByText("mark.png")).toBeNull();
+   const descriptor = {
+     name: "helper.agent.png",
+     url: `https://relay.example.test/media/${"a".repeat(64)}.png`,
+@@ -11280,6 +11345,7 @@ it.each([
+ );
+ 
+ it("withholds recording tools while a message edit cannot take attachments", async () => {
++  let attach: ComposerToolProps["attachFiles"];
+   const empty: readonly never[] = [];
+   const tools: readonly Contribution<ComposerTool>[] = [
+     {
+@@ -11288,8 +11354,10 @@ it("withholds recording tools while a message edit cannot take attachments", asy
+       pluginId: "test",
+       revision: "1",
+       title: "Capture",
+-      component: ({ capture }) =>
+-        capture ? <button type="button">Start recording</button> : null,
++      component: ({ capture, attachFiles }) => {
++        attach = attachFiles;
++        return capture ? <button type="button">Start recording</button> : null;
++      },
+     },
+   ];
+   const extensions = {
+@@ -11316,6 +11384,12 @@ it("withholds recording tools while a message edit cannot take attachments", asy
+   expect(screen.getByRole("button", { name: "Start recording" })).toBeVisible();
+   fireEvent.keyDown(input, { key: "ArrowUp" });
+   expect(input).toHaveAccessibleName("Edit message");
++  act(() =>
++    expect(attach?.([attachmentFile("mark.png")])).toBe(
++      "Finish editing before attaching new files.",
++    ),
++  );
++  expect(screen.queryByText("mark.png")).toBeNull();
+   expect(screen.queryByRole("button", { name: "Start recording" })).toBeNull();
+   fireEvent.click(
+     within(view.container).getByRole("button", { name: "Cancel edit" }),
+@@ -12847,3 +12921,62 @@ it("removing a pending chip abandons its resolution, and redo starts it again",
+     restarted.resolve(null);
+   }
+ });
++
++it("queues plugin attachments through the native draft without sending or replacing existing content", async () => {
++  let command: ComposerToolProps["attachFiles"];
++  const empty: readonly never[] = [];
++  const tools: readonly Contribution<ComposerTool>[] = [
++    {
++      id: "attachment-test",
++      key: "test/attachment-test",
++      pluginId: "test",
++      revision: "1",
++      title: "Attach",
++      component: (props) => {
++        command = props.attachFiles;
++        return null;
++      },
++    },
++  ];
++  const h = await mountUploadComposer({
++    extensions: {
++      tools: { snapshot: () => tools, subscribe: () => () => {} },
++      inline: { snapshot: () => empty, subscribe: () => () => {} },
++      completions: { snapshot: () => empty, subscribe: () => () => {} },
++    },
++  });
++  const user = userEvent.setup();
++  await user.click(h.input());
++  await user.keyboard("Keep this note");
++  pickAttachments(h.container, [attachmentFile("existing.txt")]);
++  await waitFor(() => expect(h.uploadCalls).toHaveLength(1));
++  const png = new File(["cropped png"], "Hero mark.png", { type: "image/png" });
++  const attach = command;
++  act(() => expect(attach?.([png])).toBe(true));
++  expect(h.input()).toHaveValue("Keep this note");
++  expect(screen.getByText("existing.txt")).toBeInTheDocument();
++  expect(screen.getByText("Hero mark.png")).toBeInTheDocument();
++  expect(h.publish).not.toHaveBeenCalled();
++  act(() => expect(attach?.([attachmentFile("empty.txt", "")])).not.toBe(true));
++  expect(screen.queryByText("empty.txt")).toBeNull();
++  // Hiding or replacing the destination retires the retained command.
++  h.present(false);
++  act(() => expect(attach?.([attachmentFile("hidden.txt")])).not.toBe(true));
++  h.unmount();
++  expect(attach?.([png])).not.toBe(true);
++  expect(h.publish).not.toHaveBeenCalled();
++});
++
++it("refuses plugin attachments when uploads are unavailable or the destination changes", () => {
++  const h = mount();
++  const attach = h.commands().attachFiles;
++  const file = attachmentFile();
++  act(() =>
++    expect(attach?.([file])).toBe(
++      "Uploads are unavailable on this connection.",
++    ),
++  );
++  h.retarget({ channelId: "other" });
++  expect(attach?.([file])).toBe("The message can't be edited right now");
++  expect(h.messages.send).not.toHaveBeenCalled();
++});
+diff --git i/src/features/messages/MessageComposer.tsx w/src/features/messages/MessageComposer.tsx
+index ecbd2b5..24568fa 100644
+--- i/src/features/messages/MessageComposer.tsx
++++ w/src/features/messages/MessageComposer.tsx
+@@ -124,7 +124,11 @@ import { ComposerTools } from "../conversation/ComposerTools";
+ import { ComposerLinkDialog } from "./ComposerLinkDialog";
+ import { ComposerFormattingTools } from "./ComposerFormattingTools";
+ import { AgentsContext, useSessionState } from "../agents/react";
+-import { ComposerModels, type DraftPicks } from "./ComposerModels";
++import {
++  ComposerModels,
++  type DraftPicks,
++  type ComposerSessionControl,
++} from "./ComposerModels";
+ import type { MentionPicks } from "../relay/messages";
+ import type {
+   ConversationExtensions,
+@@ -286,6 +290,8 @@ export type MessageComposerProps = {
+   trailingTool?: ReactNode;
+   inviteAgents?: boolean | undefined;
+   onSend?: (id: string) => void;
++  /** Revoke request-specific editor access before the native session action; exceptions refuse the action. */
++  onSessionControl?: ComposerSessionControl | undefined;
+   /** Inbox may retire only after saving the replacement or confirming no draft remains. */
+   onDraftSaved?: (() => void) | undefined;
+   /** Before a focused form detaches, its host can hand focus to retained content. */
+@@ -463,6 +469,7 @@ function Composer({
+   placeholder,
+   onSend,
+   onDraftSaved,
++  onSessionControl,
+   onFocusedRemoval,
+   editMessages,
+   onOpenLink,
+@@ -1136,35 +1143,37 @@ function Composer({
+       !voice.capturing,
+     attachFiles,
+   );
+-  function attachFiles(files: readonly File[]) {
+-    if (
+-      !permitted.current ||
+-      editingDisabled ||
+-      voice.isCapturing() ||
+-      !files.length
+-    )
+-      return;
+-    if (editing.target) {
+-      setAttachmentError("Finish editing before attaching new files.");
+-      return;
+-    }
+-    if (!canAttach) {
+-      setAttachmentError(
++  function attachFiles(
++    files: readonly File[],
++  ): { ids: string[] } | { reason: string } {
++    const refuse = (reason: string) => {
++      setAttachmentError(reason);
++      return { reason };
++    };
++    if (!permitted.current || editingDisabled || !input.current?.isConnected)
++      return { reason: "The message can't be edited right now" };
++    if (voice.isCapturing())
++      return refuse("Finish recording before attaching new files.");
++    if (!files.length) return { reason: "Choose at least one file to attach." };
++    if (editing.target)
++      return refuse("Finish editing before attaching new files.");
++    if (!canAttach)
++      return refuse(
+         submission
+           ? "Create this conversation before attaching files."
+           : "Uploads are unavailable on this connection.",
+       );
+-      return;
+-    }
+     try {
+       attachments.store.add(files);
+       setAttachmentError(undefined);
+-      return attachments.store
+-        .snapshot()
+-        .slice(-files.length)
+-        .map((item) => item.id);
++      return {
++        ids: attachments.store
++          .snapshot()
++          .slice(-files.length)
++          .map((item) => item.id),
++      };
+     } catch (reason) {
+-      setAttachmentError(
++      return refuse(
+         reason instanceof Error ? reason.message : "Could not attach files.",
+       );
+     }
+@@ -2855,11 +2864,14 @@ function Composer({
+             hidden
+             aria-label="Choose attachments"
+             onChange={(event) => {
+-              const ids = attachFiles(
++              const result = attachFiles(
+                 Array.from(event.currentTarget.files ?? []),
+               );
+-              if (ids?.length)
+-                pickerFocus.current = { ids, owner: document.activeElement };
++              if ("ids" in result && result.ids.length)
++                pickerFocus.current = {
++                  ids: result.ids,
++                  owner: document.activeElement,
++                };
+               event.currentTarget.value = "";
+             }}
+           />
+@@ -3252,6 +3264,10 @@ function Composer({
+                     insertMentions={insertMentions}
+                     replaceRecipients={replaceRecipients}
+                     replaceRecipientsIfEmpty={replaceRecipientsIfEmpty}
++                    attachFiles={(files) => {
++                      const result = attachFiles(files);
++                      return "ids" in result ? true : result.reason;
++                    }}
+                     insertResource={insertResource}
+                     focus={() => input.current?.focus()}
+                   />
+@@ -3276,6 +3292,7 @@ function Composer({
+                   }}
+                   startsThread={startsThread}
+                   place={sessionPlace}
++                  onSessionControl={onSessionControl}
+                 />
+               )}
+             <IconButton
+diff --git i/src/shared/design-system/icons/index.ts w/src/shared/design-system/icons/index.ts
+index d9389b5..351b5e0 100644
+--- i/src/shared/design-system/icons/index.ts
++++ w/src/shared/design-system/icons/index.ts
+@@ -208,6 +208,8 @@ import TablerPaperclipIcon from "@tabler/icons-react/dist/esm/icons/IconPapercli
+ export const PaperclipIcon = defineIcon("tabler", TablerPaperclipIcon);
+ import TablerFileTextIcon from "@tabler/icons-react/dist/esm/icons/IconFileText.mjs";
+ export const FileTextIcon = defineIcon("tabler", TablerFileTextIcon);
++import TablerFilePlusIcon from "@tabler/icons-react/dist/esm/icons/IconFilePlus.mjs";
++export const FilePlusIcon = defineIcon("tabler", TablerFilePlusIcon);
+ import TablerFlagIcon from "@tabler/icons-react/dist/esm/icons/IconFlag.mjs";
+ export const FlagIcon = defineIcon("tabler", TablerFlagIcon);
+ import TablerFolderOpenIcon from "@tabler/icons-react/dist/esm/icons/IconFolderOpen.mjs";
+diff --git i/tsconfig.json w/tsconfig.json
+index 95fb136..0fe5629 100644
+--- i/tsconfig.json
++++ w/tsconfig.json
+@@ -1,7 +1,11 @@
+ {
+   "compilerOptions": {
+     "target": "ES2022",
+-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
++    "lib": [
++      "ES2022",
++      "DOM",
++      "DOM.Iterable"
++    ],
+     "module": "ESNext",
+     "moduleResolution": "Bundler",
+     "jsx": "react-jsx",
+@@ -16,8 +20,15 @@
+     "skipLibCheck": true,
+     "noEmit": true,
+     "allowImportingTsExtensions": true,
+-    "types": ["vite/client", "node"],
++    "types": [
++      "vite/client",
++      "node"
++    ],
+     "resolveJsonModule": true
+   },
+-  "include": ["src", "vite.config.ts"]
++  "include": [
++    "src",
++    "vite.config.ts",
++    "portable/copyos-domain/src/paper-core.d.ts"
++  ]
+ }
+diff --git i/vite.config.ts w/vite.config.ts
+index ca28165..61b1836 100644
+--- i/vite.config.ts
++++ w/vite.config.ts
+@@ -1,3 +1,4 @@
++import { editorPortPlugin } from "./browser-host/editor-port/plugin.mjs";
+ import { readFileSync } from "node:fs";
+ import { parseEnv } from "node:util";
+ import { fileURLToPath } from "node:url";
+@@ -106,6 +107,8 @@ export default defineConfig(async ({ command, mode }) => {
+     command === "serve" ? (env.BUZZ_DEV_FIRST_RUN_ACCOUNT ?? "") : "";
+   parseFirstRunAccountSeed(firstRunAccount);
+   const plugins: PluginOption[] = [react()];
++  if (command === "serve" && env.BUZZ_EDITOR_DATA_ROOT)
++    plugins.push(editorPortPlugin(env.BUZZ_EDITOR_DATA_ROOT));
+   if (command === "serve")
+     plugins.push(
+       (await import("./scripts/developer-settings.ts")).developerSettingsPlugin(
+@@ -136,6 +139,8 @@ export default defineConfig(async ({ command, mode }) => {
+     });
+   return {
+     plugins,
++    // The portable editor workspace must share the host renderer's React dispatcher.
++    resolve: { dedupe: ["react", "react-dom"] },
+     define: {
+       "import.meta.env.VITE_BUZZ_LIVE": JSON.stringify(live ? "1" : "0"),
+       "import.meta.env.VITE_BUZZ_NOTIFICATIONS_PAUSED": JSON.stringify(
+diff --git i/vitest.config.ts w/vitest.config.ts
+index 7810926..c1e3c9f 100644
+--- i/vitest.config.ts
++++ w/vitest.config.ts
+@@ -14,6 +14,8 @@ if (
+ process.env.LC_ALL = "C.UTF-8";
+ 
+ export default defineConfig({
++  // Retained editor source tests use the same React singleton as the shipped view bundle.
++  resolve: { dedupe: ["react", "react-dom"] },
+   define: {
+     "import.meta.env.VITE_BUZZ_COMMUNITY_ALIASES":
+       JSON.stringify(fixtureAliases),

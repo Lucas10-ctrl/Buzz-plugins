@@ -1,0 +1,94 @@
+.panel {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  max-width: 100%;
+}
+.panel > input,
+.create > input,
+.editor > input,
+.panel > button,
+.create > button,
+.editor > button,
+.styleRow button {
+  font: inherit;
+  color: inherit;
+  border: 0.5px solid var(--designer-border);
+  border-radius: 4px;
+  background: var(--designer-field);
+  padding: 4px 6px;
+  min-height: 24px;
+  min-width: 0;
+}
+.panel button {
+  cursor: pointer;
+}
+.panel button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.panel button:focus-visible,
+.panel input:focus-visible {
+  outline: 1px solid var(--designer-accent);
+  outline-offset: 1px;
+}
+.search {
+  width: 100%;
+  box-sizing: border-box;
+}
+.list {
+  max-height: 180px;
+  overflow: auto;
+  min-width: 0;
+}
+.styleRow {
+  display: flex;
+  gap: 4px;
+  margin-top: 3px;
+}
+.styleRow button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.styleRow button:first-child {
+  flex: 1;
+}
+.styleRow button:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.styleRow button[aria-pressed="true"] {
+  color: var(--designer-accent);
+}
+.group {
+  display: block;
+  color: var(--designer-muted);
+  margin-top: 6px;
+}
+.create,
+.editor {
+  display: grid;
+  gap: 6px;
+  border-top: 0.5px solid var(--designer-border);
+  padding-top: 8px;
+}
+.editor > section {
+  padding: 8px 0;
+  border: 0;
+}
+.editor h4 {
+  font: inherit;
+  font-weight: 500;
+  margin: 0;
+}
+
+.panel input,
+.panel select,
+.panel button {
+  box-sizing: border-box;
+}

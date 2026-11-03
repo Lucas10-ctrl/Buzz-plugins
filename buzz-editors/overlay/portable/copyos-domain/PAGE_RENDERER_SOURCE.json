@@ -1,0 +1,5 @@
+{
+  "source": "Independent CopyOS snapshot: packages/workspace/copyos-projects/src/pages.ts",
+  "sha256": "6172f19796c1f49deed1ca8a162c5b160a808ba005cee2d0a1e88c9fc3850257",
+  "adapter": "Expose the unchanged standaloneHtml renderer with JSDoc; repository behavior and other source remain unchanged."
+}

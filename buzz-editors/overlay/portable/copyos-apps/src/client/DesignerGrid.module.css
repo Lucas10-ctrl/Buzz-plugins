@@ -1,0 +1,42 @@
+.ownership {
+  margin-bottom: 8px;
+  font: inherit;
+}
+.ownership p {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1.4;
+}
+.ownerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  gap: 4px;
+}
+.ownerRow > span {
+  flex-shrink: 0;
+}
+.ownership button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px;
+  background: var(--dsw-alias-component-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.ownership button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.ownership button:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+}
+.ownership button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

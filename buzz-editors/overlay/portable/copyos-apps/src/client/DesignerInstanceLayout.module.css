@@ -1,0 +1,54 @@
+.section {
+  margin-top: 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  padding-top: 12px;
+  font: inherit;
+}
+.section h4 {
+  margin: 0 0 8px;
+  font: inherit;
+  font-weight: 500;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+.row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.section button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.section > button {
+  margin-top: 8px;
+  width: 100%;
+  background: var(--dsw-alias-component-bg-hover);
+}
+.section button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.section button:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.hint {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}

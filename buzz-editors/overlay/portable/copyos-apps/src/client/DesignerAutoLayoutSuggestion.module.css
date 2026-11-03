@@ -1,0 +1,43 @@
+.review { min-width: 0; }
+.review p { margin: 8px 0; }
+.review dl { display: grid; gap: 4px; margin: 8px 0; }
+.review dl > div { display: flex; justify-content: space-between; gap: 8px; }
+.review dd { margin: 0; }
+.review ul { max-height: 144px; overflow: auto; padding: 0; list-style: none; }
+.review li { display: grid; gap: 2px; margin: 6px 0; overflow-wrap: anywhere; }
+.review strong { font-weight: 500; }
+.actions { display: flex; gap: 6px; margin-top: 12px; }
+
+.actions button {
+  height: 24px;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font: inherit;
+  line-height: 16px;
+}
+.actions .cancel {
+  color: inherit;
+  background: var(--designer-field);
+  border: 0.5px solid var(--designer-border);
+}
+.actions .cancel:hover:not(:disabled) {
+  background: var(--designer-hover);
+}
+.actions button:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 2px;
+}
+.actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.actions .apply {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  border-color: transparent;
+}
+.actions .apply:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}

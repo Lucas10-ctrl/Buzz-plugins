@@ -1,0 +1,50 @@
+.root {
+  display: block;
+  min-width: 0;
+}
+.root > span {
+  display: block;
+}
+.root[data-caption='true'] {
+  display: grid;
+  gap: 4px;
+}
+.caption {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  /* Inside the inspector these take its Builder-style field size; elsewhere the compact designer defaults apply. */
+  min-height: var(--inspector-control-height, 24px);
+  padding: 2px 8px;
+  border: 0.5px solid var(--inspector-field-border, transparent);
+  border-radius: var(--inspector-field-radius, 5px);
+  background: var(--inspector-field, var(--designer-field));
+  color: var(--designer-foreground);
+  font: inherit;
+  text-align: left;
+}
+.trigger:focus-visible {
+  border-color: #0d99ff;
+  outline: none;
+}
+.trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Portaled choices must stay above their containing designer settings popup. */
+.menu[role='menu'] {
+  z-index: 1300;
+}

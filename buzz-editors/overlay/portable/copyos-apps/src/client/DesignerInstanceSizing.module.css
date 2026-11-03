@@ -1,0 +1,67 @@
+.section {
+  margin-top: 8px;
+  font: inherit;
+}
+.section h4 {
+  margin: 0 0 4px;
+  font: inherit;
+  font-weight: 500;
+}
+.axis,
+.property {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+.axis > span,
+.property > span {
+  flex: 1;
+  min-width: 0;
+}
+.axis small,
+.property small {
+  display: block;
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+}
+.section button,
+.panel button {
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.section button:disabled,
+.panel button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.section button:hover:enabled,
+.panel button:hover:enabled {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.section :focus-visible,
+.panel :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.section .reset {
+  width: 100%;
+  margin-top: 4px;
+  text-align: left;
+  color: var(--dsw-alias-label-secondary);
+}
+.panel {
+  width: min(340px, calc(100vw - 24px));
+}
+.property {
+  padding: 8px;
+  flex-wrap: wrap;
+}
+.property > span {
+  min-width: 80px;
+}

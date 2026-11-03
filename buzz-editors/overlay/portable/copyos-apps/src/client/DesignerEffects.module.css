@@ -1,0 +1,187 @@
+.section {
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--designer-border);
+  font:
+    400 11px/16px CopyOSInter,
+    Inter,
+    sans-serif;
+}
+.heading,
+.rowHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.heading {
+  flex-wrap: wrap;
+}
+.heading h3 {
+  flex: 1;
+  margin: 0;
+  font:
+    500 11px/16px CopyOSInter,
+    Inter,
+    sans-serif;
+}
+.section button {
+  color: inherit;
+  font: inherit;
+  border: 0;
+  border-radius: 4px;
+  background: var(--designer-field);
+  min-width: 22px;
+  height: 24px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.section button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.section button:focus-visible {
+  outline: 1px solid var(--designer-accent);
+  outline-offset: 1px;
+}
+.row {
+  margin-top: 8px;
+}
+.rowHeading > span {
+  flex: 1;
+  min-width: 0;
+}
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+.color {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.color > :first-child {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+.hint {
+  color: var(--designer-muted);
+  font: inherit;
+  margin: 6px 0;
+}
+.picker {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.type {
+  flex: 1;
+  width: 0;
+  min-width: 70px;
+  height: var(--inspector-control-height, 24px);
+  padding: 2px 6px;
+  border: 0.5px solid var(--inspector-field-border, transparent);
+  border-radius: var(--inspector-field-radius, 4px);
+  color: inherit;
+  font: inherit;
+  background: var(--inspector-field, var(--designer-field));
+}
+/* In a narrow panel the type menu takes its own line so its name is never cut off; the row's buttons follow on the right. */
+.section {
+  container-type: inline-size;
+}
+@container (max-width: 260px) {
+  .rowHeading {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .rowHeading > .type {
+    flex: 1 0 100%;
+  }
+}
+
+.numeric {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+.numeric > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.token,
+.boundToken {
+  flex: 0 0 22px;
+  padding: 2px;
+}
+.section .boundToken {
+  color: var(--designer-accent);
+}
+.tokenPanel {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+.tokenPanel select {
+  max-width: 260px;
+  height: 24px;
+  border: 0.5px solid var(--designer-border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: inherit;
+  font: inherit;
+  background: var(--designer-field);
+}
+.tokenGlyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.color > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.color > small {
+  flex-shrink: 0;
+}
+.styleLabel {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.styleLabel > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 120px;
+}
+.styleLabel > button {
+  visibility: hidden;
+}
+.styleLabel:hover > button,
+.styleLabel:focus-within > button {
+  visibility: visible;
+}
+.styleLabel > .styleName {
+  visibility: visible;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 120px;
+}
+.stylesPanel.stylesPanel {
+  width: 304px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+}

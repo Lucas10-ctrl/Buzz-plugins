@@ -1,0 +1,11 @@
+packages:
+  - copyos-apps
+  - copyos-domain
+  - copyos-tools
+  - editor-host
+  - libraries/*
+allowBuilds:
+  "@turbodocx/html-to-docx": false
+overrides:
+  zustand@4.4.7>use-sync-external-store: 1.6.0
+  "@csstools/css-calc": 3.2.1

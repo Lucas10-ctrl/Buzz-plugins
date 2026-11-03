@@ -1,0 +1,104 @@
+.inspector {
+  padding: 12px;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+}
+.inspector h3,
+.inspector h4 {
+  font: inherit;
+  font-weight: 500;
+  margin: 12px 0 8px;
+}
+.inspector p {
+  margin: 6px 0;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-secondary);
+}
+.inspector button,
+.chooser button,
+.chooser input {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 6px;
+  background: var(--dsw-alias-component-bg-hover);
+  min-width: 0;
+}
+.inspector button,
+.chooser button {
+  cursor: pointer;
+}
+.inspector button:hover,
+.chooser button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.inspector button:focus-visible,
+.chooser button:focus-visible,
+.chooser input:focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}
+.inspector button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+.ownerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.ownerInfo {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.ownerInfo small {
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+}
+.ownerRow > button {
+  white-space: nowrap;
+}
+.chooser {
+  padding: 8px 0;
+  margin-top: 8px;
+}
+.chooser summary {
+  cursor: pointer;
+  padding: 4px;
+}
+.chooser input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0;
+}
+.choices {
+  max-height: 240px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.choices button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.cellAlignment { width: 100%; margin: 8px 0; }
+.inspector .cellAlignment button { min-height: 24px; height: 24px; padding: 3px; }

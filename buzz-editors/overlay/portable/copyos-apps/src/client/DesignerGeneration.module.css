@@ -1,0 +1,83 @@
+.generation h3 {
+  margin: 12px 0 8px;
+}
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+.form label:not(:where([data-buzz-ui], [data-buzz-ui] *, :has([data-buzz-ui]))) {
+  display: grid;
+  gap: 4px;
+}
+.form textarea:not(:where([data-buzz-ui], [data-buzz-ui] *)),
+.form input:not(:where([data-buzz-ui], [data-buzz-ui] *)),
+.form select:not(:where([data-buzz-ui], [data-buzz-ui] *)) {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--designer-field);
+  border: 1px solid var(--designer-border);
+  border-radius: 5px;
+}
+.form textarea:not(:where([data-buzz-ui], [data-buzz-ui] *)) {
+  resize: vertical;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+.form p,
+.note {
+  margin: 0;
+}
+.note,
+.status,
+.detail {
+  color: var(--designer-muted);
+  font-size: 0.92em;
+}
+.error {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  background: var(--designer-error-bg);
+  border: 1px solid var(--designer-error-border);
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+.list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.list li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.list img,
+.placeholder {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--designer-field);
+}
+.list p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list .detail {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.list button {
+  margin-top: 4px;
+  margin-right: 4px;
+}

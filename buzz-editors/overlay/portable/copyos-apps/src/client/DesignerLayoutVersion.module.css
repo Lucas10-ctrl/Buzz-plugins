@@ -1,0 +1,73 @@
+.panel {
+  width: 304px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+}
+.content {
+  min-width: 0;
+  padding: 12px;
+}
+.content label {
+  display: grid;
+  gap: 4px;
+}
+.content select,
+.actions button {
+  min-height: 24px;
+  font: inherit;
+  color: inherit;
+  background: var(--designer-field);
+  border: 1px solid var(--designer-border);
+  border-radius: 5px;
+}
+.content select {
+  width: 100%;
+}
+.content p {
+  margin: 8px 0;
+}
+.content dl {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.content dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.content dd {
+  margin: 0;
+}
+.content ul {
+  max-height: 200px;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+.content li {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.content strong {
+  font-weight: 500;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.actions button {
+  padding: 3px 8px;
+}
+.actions button:disabled {
+  opacity: 0.4;
+}
+.content :focus-visible {
+  outline: 1px solid var(--dsw-alias-link);
+  outline-offset: 1px;
+}

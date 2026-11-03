@@ -1,0 +1,138 @@
+/* Original editor controls and their portals inherit Buzz's semantic theme roles. */
+:global(:root) {
+  --dsw-font-family: var(--font-sans);
+  --dsw-alias-bg-base: var(--surface-panel);
+  --dsw-alias-bg1: var(--surface-panel);
+  --dsw-alias-bg2: var(--affordance-subtle);
+  --dsw-alias-label-primary: var(--text-standard);
+  --dsw-alias-label-secondary: var(--text-subtle);
+  --dsw-alias-label-tertiary: var(--text-metadata);
+  --dsw-alias-label-quaternary: var(--text-unavailable);
+  --dsw-alias-border-l1: var(--border-standard);
+  --dsw-alias-border-l2: var(--border-standard);
+  --dsw-alias-border-l3: var(--border-standard);
+  --dsw-alias-brand-primary: var(--affordance-accent-prominent);
+  --dsw-alias-brand-primary-hover: var(--affordance-accent-prominent-hover);
+  --dsw-alias-scrollbar-bg-l2: var(--border-standard);
+  --dsw-alias-scrollbar-hover-l2: var(--text-subtle);
+  --dsw-alias-bg-layer-1: var(--surface-popover);
+  --dsw-alias-bg-layer-2: var(--surface-inset);
+  --dsw-alias-bg-layer-3: var(--surface-panel);
+  --dsw-alias-bg-mask-1: var(--bg-scrim);
+  --dsw-alias-bg-skeleton: var(--affordance-disabled);
+  --dsw-alias-border-l4: var(--border-standard);
+  --dsw-alias-interactive-bg-hover: var(--affordance-subtle-hover);
+  --dsw-alias-interactive-bg-hover-solid: var(--surface-inset);
+  --dsw-alias-interactive-bg-active: var(--affordance-subtle-pressed);
+  --dsw-alias-label-primary-foreground: var(--text-on-accent);
+  --dsw-alias-link: var(--text-link);
+  --dsw-alias-state-business-primary: var(--affordance-accent-prominent);
+  --dsw-alias-button-primary-hover: var(--affordance-accent-prominent-hover);
+  --dsw-alias-state-error-primary: var(--text-danger);
+  --dsw-alias-state-success-primary: var(--text-success);
+  --dsw-alias-state-warn-label: var(--text-warning);
+  --dsw-alias-state-warn-primary: var(--border-warning);
+  --dsw-alias-state-warn-tertiary: var(--affordance-warning);
+  --dsw-specific-menu: var(--surface-popover);
+  --dsw-elevation-panel: var(--shadow-panel);
+  --dsw-elevation-prominent: var(--shadow-sm);
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(0, 1.5fr);
+  flex: 1;
+  min-height: 0;
+}
+.conversation {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-standard);
+}
+.agentChoice {
+  padding: var(--space-panel-inset);
+}
+.pageHandoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-panel-inset);
+}
+.pageHandoff p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.editor {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.workflowStart {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-block: var(--space-panel-inset);
+}
+.canvasWorkspace {
+  display: flex;
+  position: relative;
+}
+.canvasWorkspace > .editor {
+  flex: 1;
+}
+@media (max-width: 800px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(10rem, 0.5fr) minmax(20rem, 1fr);
+  }
+}
+.docsWorkspace {
+  display: flex;
+  position: relative;
+}
+
+.workspaceControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-panel-inset);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-standard);
+}
+
+.builderWorkspace {
+  grid-template-columns: var(--builder-chat-width, 40%) 0 minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+:global(html[data-sidebar-resizing]) .builderWorkspace iframe {
+  pointer-events: none;
+}
+@media (max-width: 800px) {
+  .builderWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(10rem, 0.5fr) minmax(20rem, 1fr);
+  }
+  .builderDivider {
+    display: none;
+  }
+}
+
+.builderWorkspace > .conversation {
+  --space-panel-inset: var(--space-3);
+  container: messages / inline-size;
+  overflow: hidden;
+}
+.builderWorkspace > .conversation :global([data-composer-surface]) {
+  width: calc(100% - 2 * var(--space-2));
+  min-width: 0;
+  max-width: 100%;
+}
+.builderWorkspace > .conversation :global([data-reading-surface]) {
+  min-width: 0;
+}
