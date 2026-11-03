@@ -8,6 +8,10 @@ Give each agent its own skills: reusable instructions it loads when a task match
 2. Open an agent's settings and choose the **Skills** tab.
 3. Choose **New skill**, or **Import SKILL.md** with a path such as `~/.claude/skills/copywriting`.
 
+## Summon a skill with a slash command
+
+Type `/` in any message box to see your agents' skills; agents you've already @mentioned come first. Pick one, or type it, e.g. `@Copywriter /copy-review this headline`. The agent gets that skill's full instructions for that message. A skill's command is its name in lowercase with dashes, so "Copy Review" is `/copy-review`.
+
 ## How agents get their skills
 
 - **Claude Code and Codex agents** are told their skill names and descriptions at the start of a conversation and whenever they change. Skills set to **Always** are included in full.

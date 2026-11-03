@@ -9,8 +9,11 @@
 // - Claude Code and Codex agents: a UserPromptSubmit hook adds the skill list
 //   (and any always-on skills in full) to the turn, once per session and again
 //   whenever the skills change or the session is compacted.
+// - Slash commands: typing "/" in a message box lists your agents' skills.
+//   When a Claude Code or Codex agent gets a message containing
+//   "/skill-name", that skill's full instructions are added to the turn.
 
-export const inject = ["react", "agents", "host"];
+export const inject = ["react", "agents", "host", "conversation"];
 
 const STORE_PREFIX = "lucas.agent-skills.v1:";
 const TOOL = "agent_skills";
@@ -24,6 +27,67 @@ const newId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const normalName = (name) => String(name ?? "").trim().toLowerCase();
+/** The slash command that summons a skill: "Copy Review" → "copy-review". */
+export const commandOf = (name) =>
+  normalName(name)
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The message text in a Buzz turn prompt, so thread history and
+ * instructions never count as a summon. Claude Code turns carry it as the
+ * "Content:" line of a <buzz-event> block; Codex turns as a JSON "Request:"
+ * line. Without that framing the whole prompt is the message. */
+export function messageText(prompt) {
+  const text = String(prompt ?? "");
+  const contents = [];
+  const sections =
+    /^<(buzz-events?|new-message-arrived-while-you-were-working)(?:\s[^<>\n]*)?>\n([\s\S]*?)\n<\/\1>$/gm;
+  for (const [, , body] of text.matchAll(sections)) {
+    const request = body.match(/^Request: (.*)$/m);
+    if (request) {
+      try {
+        contents.push(String(JSON.parse(request[1])));
+      } catch {
+        contents.push(request[1]);
+      }
+      continue;
+    }
+    for (const block of body.split(/\n(?=--- Event \d+ )/)) {
+      const start = block.indexOf("Content: ");
+      if (start < 0) continue;
+      const end = block.lastIndexOf("\nTags: ");
+      contents.push(block.slice(start + 9, end > start ? end : undefined));
+    }
+  }
+  return contents.length ? contents.join("\n\n") : text;
+}
+
+/** The enabled skills a message summons with "/command". */
+export function summonedSkills(prompt, skills) {
+  const text = messageText(prompt);
+  if (!text.includes("/")) return [];
+  return skills.filter((skill) => {
+    const command = commandOf(skill.name);
+    if (!command || skill.enabled === false) return false;
+    return new RegExp(
+      `(^|[\\s(>\\]*_])/${escapeRegExp(command)}(?=$|[\\s.,!?;:)*_\\]])`,
+      "im",
+    ).test(text);
+  });
+}
+
+/** What a summoned skill adds to the turn. */
+function summonContext(skills) {
+  return skills
+    .map(
+      (skill) =>
+        `The user summoned your skill /${commandOf(skill.name)} in this message. Follow it for this request:\n<skill name="${skill.name}">\n${skill.body.trim()}\n</skill>`,
+    )
+    .join("\n\n");
+}
 
 /** Reads YAML-ish frontmatter (name, description) from a SKILL.md file. */
 export function parseSkillFile(text, fallbackName = "") {
@@ -149,9 +213,10 @@ function skillContext(skills) {
   if (onDemand.length) {
     parts.push(
       `When a task matches a skill below, load it before you start with the \`${TOOL}\` tool (action "load" and the skill's name; search for the tool if it is not loaded yet) and follow its instructions.`,
+      'A message that contains "/skill-name" summons that skill: use it for that request.',
       ...onDemand.map(
         (skill) =>
-          `- ${skill.name}${skill.description ? `: ${skill.description}` : ""}`,
+          `- ${skill.name} (/${commandOf(skill.name)})${skill.description ? `: ${skill.description}` : ""}`,
       ),
     );
   }
@@ -187,7 +252,7 @@ export async function apply(ctx) {
   agents.addTool({
     name: TOOL,
     description:
-      'Your skills: reusable instructions your owner attached to you in Buzz. Use action "list" to see each skill\'s name and description at the start of a task, and action "load" with a skill name to get its full instructions, then follow them.',
+      'Your skills: reusable instructions your owner attached to you in Buzz. Use action "list" to see each skill\'s name and description at the start of a task, and action "load" with a skill name to get its full instructions, then follow them. A message containing "/skill-name" asks you to load and use that skill.',
     inputSchema: {
       type: "object",
       properties: {
@@ -209,10 +274,11 @@ export async function apply(ctx) {
         .list(pubkeyOf(client?.key))
         .filter((skill) => skill.enabled !== false);
       if (args?.action === "load") {
-        const wanted = normalName(args.name);
+        const wanted = normalName(args.name).replace(/^\//, "");
         if (!wanted) throw new Error('Give the name of the skill to load.');
         const skill =
           skills.find((s) => normalName(s.name) === wanted) ??
+          skills.find((s) => commandOf(s.name) === commandOf(wanted)) ??
           skills.find((s) => normalName(s.name).includes(wanted));
         if (!skill) {
           const names = skills.map((s) => s.name).join(", ") || "none";
@@ -258,20 +324,24 @@ export async function apply(ctx) {
         id: "skills",
         harness,
         event: "UserPromptSubmit",
-        run(_input, { agent, session }) {
-          const text = skillContext(store.list(pubkeyOf(agent)));
+        run(input, { agent, session }) {
+          const skills = store.list(pubkeyOf(agent));
+          const text = skillContext(skills);
           const key = `${harness}|${session}`;
           const print = fingerprint(text);
-          if (!text) {
-            told.delete(key);
-            return undefined;
+          const parts = [];
+          if (!text) told.delete(key);
+          else if (told.get(key) !== print) {
+            told.set(key, print);
+            parts.push(text);
           }
-          if (told.get(key) === print) return undefined;
-          told.set(key, print);
+          const summoned = summonedSkills(input?.prompt, skills);
+          if (summoned.length) parts.push(summonContext(summoned));
+          if (!parts.length) return undefined;
           return {
             hookSpecificOutput: {
               hookEventName: "UserPromptSubmit",
-              additionalContext: text,
+              additionalContext: parts.join("\n\n"),
             },
           };
         },
@@ -281,12 +351,103 @@ export async function apply(ctx) {
     }
   }
 
+  // ---- Slash commands: "/" in a message box lists your agents' skills. ---
+  if (typeof ctx.conversation?.registerCompletion === "function") {
+    ctx.conversation.registerCompletion({
+      id: "skill-commands",
+      title: "Skills",
+      order: 0,
+      match: ({ text, start, end }) => slashQuery(text, start, end),
+      component: createSlashMenu(React, store, agents),
+    });
+  }
+
   // ---- UI: a Skills tab on every agent's settings. -----------------------
   agents.registerTab({
     id: "skills",
     title: "Skills",
     component: createSkillsTab(React, store, agents, host),
   });
+}
+
+/** A "/command" being typed at the caret, at a word start; paths and URLs
+ * (a "/" right after other text) never match. */
+export function slashQuery(text, caret, end = caret) {
+  if (!Number.isInteger(caret) || caret !== end || caret < 0 || caret > text.length)
+    return null;
+  const before = text.slice(Math.max(0, caret - 80), caret);
+  const match = before.match(/(?:^|[\s([{])\/([a-z0-9_-]*)$/iu);
+  if (!match) return null;
+  const query = match[1] ?? "";
+  return { start: caret - query.length - 1, end: caret, query };
+}
+
+/** Commands from the community's agents: one row per command, listing each
+ * agent that has it. Agents already @mentioned in the draft come first. */
+export function slashChoices(query, draft, agentList, skillsOf) {
+  const wanted = commandOf(query);
+  const mentioned = (agent) =>
+    agent.name && String(draft ?? "").toLowerCase().includes(`@${agent.name.toLowerCase()}`);
+  const rows = new Map();
+  for (const agent of agentList) {
+    for (const skill of skillsOf(agent.pubkey)) {
+      const command = commandOf(skill.name);
+      if (!command || skill.enabled === false) continue;
+      if (wanted && !command.includes(wanted)) continue;
+      const row = rows.get(command) ?? { command, skill, agents: [], mentioned: false, rank: 2 };
+      row.agents.push(agent.name);
+      row.mentioned ||= mentioned(agent);
+      row.rank = Math.min(row.rank, command === wanted ? 0 : command.startsWith(wanted) ? 1 : 2);
+      rows.set(command, row);
+    }
+  }
+  return [...rows.values()].sort(
+    (a, b) =>
+      Number(b.mentioned) - Number(a.mentioned) ||
+      a.rank - b.rank ||
+      a.command.localeCompare(b.command),
+  );
+}
+
+function createSlashMenu(React, store, agents) {
+  const { useEffect, useSyncExternalStore } = React;
+  // Bumped whenever skills or agents change, so the menu republishes.
+  let version = 0;
+  const subscribeAll = (listener) => {
+    const changed = () => {
+      version++;
+      listener();
+    };
+    const a = store.subscribe(changed);
+    const b = agents.subscribe(changed);
+    return () => {
+      a();
+      b();
+    };
+  };
+  return function SlashMenu({ query, observation, publish }) {
+    const seen = useSyncExternalStore(subscribeAll, () => version);
+    useEffect(() => {
+      const choices = slashChoices(
+        query.query,
+        observation.text,
+        agents.snapshot().agents ?? [],
+        (pubkey) => store.list(pubkey),
+      ).slice(0, 50);
+      const dispose = publish({
+        items: choices.map((row) => ({
+          id: `skill:${row.command}`,
+          label: `/${row.command}`,
+          detail: [row.skill.description, row.agents.join(", ")]
+            .filter(Boolean)
+            .join(" · "),
+          edit: { text: `/${row.command} ` },
+        })),
+      });
+      return dispose || undefined;
+    }, [query.query, query.start, observation.revision, seen]);
+    return null;
+  };
 }
 
 function createSkillsTab(React, store, agents, host) {
