@@ -1,0 +1,14 @@
+{
+  "id": "lucas.agent-skills",
+  "name": "Agent Skills",
+  "apiVersion": 1,
+  "description": "Give each agent its own skills: reusable instructions it loads when a task matches. Adds a Skills tab to every agent's settings.",
+  "discovery": {
+    "category": "developer-tools-and-integrations",
+    "tags": ["Agents", "Skills", "Instructions"]
+  },
+  "host": {
+    "agentHooks": ["buzz.claude-code/claude-code", "buzz.codex/codex"],
+    "files": true
+  }
+}
