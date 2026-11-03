@@ -7,6 +7,7 @@ import { developmentStore } from "./native/pages-client";
 import { EditorAgentBridge } from "./native/agent-bridge";
 import { readDocNavigation } from "./native/docs-route";
 import { EditorComposerCapture } from "./native/editor-composer";
+import { carriesEditor } from "./native/editor-package";
 
 const NativeBrandSettings = lazy(() =>
   import("./native/NativeBrandSettings").then((module) => ({
@@ -62,16 +63,17 @@ export const apply: PluginModule["apply"] = (ctx) => {
       </Suspense>
     ),
   });
-  ctx.settingsCards.register({
-    id: "agent-docs",
-    title: "Agent docs",
-    group: "App",
-    component: () => (
-      <Suspense fallback={<p role="status">Loading agent docs…</p>}>
-        <AgentDocSettings ctx={ctx} />
-      </Suspense>
-    ),
-  });
+  if (carriesEditor("docs"))
+    ctx.settingsCards.register({
+      id: "agent-docs",
+      title: "Agent docs",
+      group: "App",
+      component: () => (
+        <Suspense fallback={<p role="status">Loading agent docs…</p>}>
+          <AgentDocSettings ctx={ctx} />
+        </Suspense>
+      ),
+    });
   ctx.conversation.registerTool({
     id: "editor-context",
     title: "Editor context",
@@ -82,6 +84,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
     { id: "canvas", title: "Canvas" },
     { id: "pages", title: "Page Builder" },
   ] as const) {
+    if (!carriesEditor(page.id)) continue;
     const Editor =
       page.id === "pages"
         ? NativePageBuilder

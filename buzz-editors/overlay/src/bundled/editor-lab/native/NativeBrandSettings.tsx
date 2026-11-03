@@ -16,6 +16,7 @@ import type { EditorStore } from "./pages-client";
 import { useEditorWorkspace } from "./useEditorWorkspace";
 import { EditorWorkspaceControl } from "./EditorWorkspaceControl";
 import styles from "./brand-settings.module.css";
+import { pageBuilderPluginId } from "./editor-package";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
 type Context = {
@@ -87,7 +88,7 @@ export function NativeBrandSettings({
             void ctx.navigation.open({
               version: 1,
               kind: "page",
-              pluginId: "local.editor-lab",
+              pluginId: pageBuilderPluginId,
               pageId: "pages",
             })
           }

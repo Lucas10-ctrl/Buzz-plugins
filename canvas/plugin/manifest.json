@@ -1,0 +1,81 @@
+{
+  "id": "lucas.canvas",
+  "name": "Canvas",
+  "apiVersion": 1,
+  "description": "Canvas design editor with native Buzz agent collaboration: build from copy, marks and asset generation. Linux x64 preview.",
+  "host": {
+    "processes": [
+      {
+        "id": "editor-repository",
+        "program": "buzz-editor-host",
+        "artifact": {
+          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/lucas.canvas/03966c77e0ca50a1271e85ca/backend/buzz-editor-host",
+          "sha256": "41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c",
+          "siblings": [
+            {
+              "name": "editor-bootstrap.mjs",
+              "sha256": "b4e3d44406ae89e95f590a0749ce3a6ab4467668481bd71b1528a2fc013337f4"
+            },
+            {
+              "name": "editor-host.tgz",
+              "sha256": "b99391c6703c6e29ea8593185bf077fd77f36f6440954e21583098f3006b2402"
+            },
+            {
+              "name": "buzz-editor-credentials",
+              "sha256": "324c64ee77cfcf98d7e31ccbafb2aa2f64ac05d69fc4b11f61c002dbb4e4e0ec"
+            },
+            {
+              "name": "media-support.mjs",
+              "sha256": "ac158061cb4107d503b0c7505c1e01497ea683979c241e41a8dffd1fae402550"
+            },
+            {
+              "name": "editor-ui.mjs.gz",
+              "sha256": "c38ae9453bbbe3322fbea3654f54c83b67fd60f6666a196e7994d8237351ad13"
+            }
+          ]
+        },
+        "args": [
+          "--input-type=module",
+          "-e",
+          "import {pathToFileURL} from 'node:url'; import {dirname,join} from 'node:path'; const {start}=await import(pathToFileURL(join(dirname(process.execPath),'editor-bootstrap.mjs')).href); await start(process.argv[1]);",
+          "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-workspaces"
+        ]
+      },
+      {
+        "id": "editor-ui",
+        "program": "buzz-editor-host",
+        "artifact": {
+          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/lucas.canvas/03966c77e0ca50a1271e85ca/backend/buzz-editor-host",
+          "sha256": "41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c",
+          "siblings": [
+            {
+              "name": "editor-bootstrap.mjs",
+              "sha256": "b4e3d44406ae89e95f590a0749ce3a6ab4467668481bd71b1528a2fc013337f4"
+            },
+            {
+              "name": "editor-host.tgz",
+              "sha256": "b99391c6703c6e29ea8593185bf077fd77f36f6440954e21583098f3006b2402"
+            },
+            {
+              "name": "buzz-editor-credentials",
+              "sha256": "324c64ee77cfcf98d7e31ccbafb2aa2f64ac05d69fc4b11f61c002dbb4e4e0ec"
+            },
+            {
+              "name": "media-support.mjs",
+              "sha256": "ac158061cb4107d503b0c7505c1e01497ea683979c241e41a8dffd1fae402550"
+            },
+            {
+              "name": "editor-ui.mjs.gz",
+              "sha256": "c38ae9453bbbe3322fbea3654f54c83b67fd60f6666a196e7994d8237351ad13"
+            }
+          ]
+        },
+        "args": [
+          "--input-type=module",
+          "-e",
+          "import{readFile}from'node:fs/promises';import{dirname,join}from'node:path';process.stdout.write((await readFile(join(dirname(process.execPath),'editor-ui.mjs.gz'))).toString('base64'));"
+        ]
+      }
+    ]
+  }
+}

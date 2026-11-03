@@ -18,8 +18,8 @@ const {checkMediaSupport}=await import('./backend/media-support.mjs');
 const media=checkMediaSupport();
 if(!media.available)console.warn(`Missing Linux media support. Website cloning will stay blocked until this is resolved. ${media.instruction}`);
 const appRoot=join(process.env.XDG_DATA_HOME||join(homedir(),'.local','share'),'xyz.block.buzz.desktop');
-const release=digest(Buffer.from(JSON.stringify(checks))).slice(0,24),base=join(appRoot,'editor-plugins','buzz.editors'),destination=join(base,release),dataRoot=join(appRoot,'editor-workspaces');
 const template=JSON.parse(await regular(join(packageRoot,'frontend','manifest.template.json')));
+const release=digest(Buffer.from(JSON.stringify(checks))).slice(0,24),base=join(appRoot,'editor-plugins',template.id),destination=join(base,release),dataRoot=join(appRoot,'editor-workspaces');
 const executable=join(destination,'backend','buzz-editor-host'),siblings=Object.entries(checks.backend).filter(([name])=>name!=='buzz-editor-host').map(([name,sha256])=>({name,sha256}));
 const artifact={path:executable,sha256:checks.backend['buzz-editor-host'],siblings};
 const manifest={...template,host:{processes:[
@@ -79,4 +79,4 @@ if(await exists(destination)){
   await rename(stage,destination);
  }catch(e){await rm(stage,{recursive:true,force:true});throw e}
 }
-console.log(`Prepared plugin. Import this folder in normal Buzz Settings → Plugins:\n${join(destination,'frontend')}\nSaved editor data: ${dataRoot}\nThe plugin has not been installed or enabled.`);
+console.log(`Prepared ${template.name}. Import this folder in normal Buzz Settings → Plugins:\n${join(destination,'frontend')}\nSaved editor data: ${dataRoot}\nThe plugin has not been installed or enabled.`);

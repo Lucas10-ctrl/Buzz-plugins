@@ -1,14 +1,10 @@
-# Buzz Editors
+# Buzz Editors source
 
-Docs, Canvas and Page Builder inside Buzz, with agent collaboration. Linux x64 preview.
+Source for the three editor plugins in this repo: [docs](../docs), [canvas](../canvas) and [page-builder](../page-builder). Linux x64 preview.
 
-This plugin is built from a modified copy of the Buzz app, so this folder holds its source plus the built plugin entry in `plugin/`.
+The editors are built from a modified copy of the Buzz app, so this folder holds that source, not a plugin. One build produces all three plugins; each carries only its own editor and agent tool, and all three share the same saved work.
 
-## Install from GitHub (this machine)
-
-Settings → Plugins → Manage plugins → import from a Git or GitHub repository → `Lucas10-ctrl/Lucas-buzz-plugins`, branch `main` → pick **Buzz Editors** (`buzz-editors/plugin`) → install → restart Buzz.
-
-`plugin/` holds only `manifest.json` and `plugin.js`. The manifest points at the editor backend (a ~200 MB Node runtime and bundle) by absolute path under `~/.local/share/xyz.block.buzz.desktop/editor-plugins/buzz.editors/<build id>/backend/`, checked by SHA-256. That backend is too big for git (one file is 124 MB, over GitHub's 100 MB limit), so it is built locally. The GitHub install works on any machine that already has that backend build; anywhere else, rebuild first (below), then commit the new `frontend/manifest.json` and `plugin.js` into `plugin/`.
+The older combined **Buzz Editors** plugin (`buzz.editors`) was split into these three on 2026-11-03. Remove it from Buzz before installing them: it adds the same agent tools, and Buzz refuses a second plugin with the same tool name.
 
 ## What's here
 
@@ -17,9 +13,10 @@ Settings → Plugins → Manage plugins → import from a Git or GitHub reposito
 | `BASE_COMMIT` | The upstream [block/buzz-app](https://github.com/block/buzz-app) commit the changes sit on |
 | `upstream.patch` | Edits to existing buzz-app files |
 | `overlay/` | Files added on top (editor code in `src/bundled/editor-lab/`, the editors in `portable/`, packaging in `plugin-package/`) |
-| `plugin/` | Built plugin entry for Buzz's GitHub import (current build `56511166…`) |
 | `restore.sh` | Clones buzz-app at the base commit and applies both |
 | `CHANGE_*.md` | Notes on individual changes |
+
+Which editor a build carries is set in `overlay/src/bundled/editor-lab/native/editor-package.ts`. Editor Lab itself keeps all three; `plugin-package/build.mjs` defines one per plugin.
 
 ## Rebuild and install
 
@@ -28,16 +25,22 @@ Settings → Plugins → Manage plugins → import from a Git or GitHub reposito
 cd ~/Documents/GitHub/buzz-editors-src
 bin/pnpm install
 bin/pnpm editors:build
-bin/node plugin-package/build.mjs          # writes ../buzz-editors-plugin-package
-cd ../buzz-editors-plugin-package
-backend/buzz-editor-host install.mjs       # prints the frontend folder to import
+bin/node plugin-package/build.mjs ~/Documents/GitHub/Buzz-plugins   # or add: docs canvas page-builder
 ```
 
-Then in Buzz: Settings → Plugins → Manage plugins → Load from folder → pick the printed `frontend` folder → restart Buzz.
+That fills each plugin folder's `backend/` (not in git, about 200 MB) and `checksums.json`. Then, per plugin:
+
+```sh
+cd ~/Documents/GitHub/Buzz-plugins/docs
+backend/buzz-editor-host install.mjs       # prints the frontend folder
+cp <printed frontend folder>/{manifest.json,plugin.js} plugin/
+```
+
+Commit the new `plugin/` files so the GitHub install points at the new build.
 
 ## Keeping this up to date
 
-Every change to the plugin gets committed here. From the working checkout (`buzz-editor-lab/buzz-app`):
+Every change to the editors gets committed here. From the working checkout (`buzz-editor-lab/buzz-app`):
 
 ```sh
 git diff --binary > <this folder>/upstream.patch
@@ -46,4 +49,5 @@ git ls-files --others --exclude-standard -z | rsync -a --from0 --files-from=- ./
 
 ## Changes
 
+- 2026-11-03: split into three plugins (Docs, Canvas, Page Builder). Docs and Canvas name their brand tool `buzz_docs_brand` and `buzz_canvas_brand`; Page Builder keeps `buzz_brand`.
 - 2026-11-03: agents can create docs. Settings → Agent docs → "Let agents create docs" (off by default). See `CHANGE_AGENT_CREATED_DOCS.md`.

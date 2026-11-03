@@ -1,0 +1,20 @@
+{
+  "id": "lucas.canvas",
+  "name": "Canvas",
+  "apiVersion": 1,
+  "description": "Canvas design editor with native Buzz agent collaboration: build from copy, marks and asset generation. Linux x64 preview.",
+  "host": {
+    "processes": [
+      {
+        "id": "editor-repository",
+        "program": "buzz-editor-host",
+        "bundled": true,
+        "args": [
+          "--input-type=module",
+          "-e",
+          "import {pathToFileURL} from 'node:url'; import {dirname,join} from 'node:path'; const {start}=await import(pathToFileURL(join(dirname(process.execPath),'editor-bootstrap.mjs')).href); await start(process.argv[1]);"
+        ]
+      }
+    ]
+  }
+}

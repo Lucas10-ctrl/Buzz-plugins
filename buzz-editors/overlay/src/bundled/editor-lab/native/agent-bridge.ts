@@ -6,6 +6,7 @@ import { canvasWebsiteGuide } from "./canvas-website";
 import { docLink } from "./docs-route";
 import { readView } from "../../../shared/view-state";
 import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
+import { carriesEditor } from "./editor-package";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
 export type EditorDocPermission = Readonly<{
@@ -722,9 +723,9 @@ export class EditorAgentBridge {
         };
       },
     };
-    ctx.agents.addTool(this.tool());
-    ctx.agents.addTool(this.canvasTool());
-    ctx.agents.addTool(this.docsTool());
+    if (carriesEditor("pages")) ctx.agents.addTool(this.tool());
+    if (carriesEditor("canvas")) ctx.agents.addTool(this.canvasTool());
+    if (carriesEditor("docs")) ctx.agents.addTool(this.docsTool());
     ctx.agents.addTool(this.brandTool());
     ctx.effect(() => {
       let current = ctx.relay.snapshot();

@@ -1,15 +1,15 @@
 {
-  "id": "buzz.editors",
-  "name": "Buzz Editors",
+  "id": "lucas.docs",
+  "name": "Docs",
   "apiVersion": 1,
-  "description": "Page Builder, Canvas and Docs with native Buzz agent collaboration. Linux x64 preview.",
+  "description": "Docs editor with native Buzz agent collaboration: drafts, suggested edits and comment threads. Linux x64 preview.",
   "host": {
     "processes": [
       {
         "id": "editor-repository",
         "program": "buzz-editor-host",
         "artifact": {
-          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/buzz.editors/56511166ec8c99665c4200ae/backend/buzz-editor-host",
+          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/lucas.docs/3527e4f340dcab4364b1ea62/backend/buzz-editor-host",
           "sha256": "41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c",
           "siblings": [
             {
@@ -30,7 +30,7 @@
             },
             {
               "name": "editor-ui.mjs.gz",
-              "sha256": "c7b09e69c54b017ca626e457fe26afd7714ba4ccb8e46f8aa03cf304eb3fbd12"
+              "sha256": "54245b558d32682330f17e3b3a809a033e8f4f1f227120142c79008b5d98ac67"
             }
           ]
         },
@@ -45,7 +45,7 @@
         "id": "editor-ui",
         "program": "buzz-editor-host",
         "artifact": {
-          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/buzz.editors/56511166ec8c99665c4200ae/backend/buzz-editor-host",
+          "path": "/home/lucas/.local/share/xyz.block.buzz.desktop/editor-plugins/lucas.docs/3527e4f340dcab4364b1ea62/backend/buzz-editor-host",
           "sha256": "41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c",
           "siblings": [
             {
@@ -66,7 +66,7 @@
             },
             {
               "name": "editor-ui.mjs.gz",
-              "sha256": "c7b09e69c54b017ca626e457fe26afd7714ba4ccb8e46f8aa03cf304eb3fbd12"
+              "sha256": "54245b558d32682330f17e3b3a809a033e8f4f1f227120142c79008b5d98ac67"
             }
           ]
         },

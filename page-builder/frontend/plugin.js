@@ -1,7 +1,7 @@
 /** API-v1 entry: editor code is a hash-verified sibling of the declared native runtime. */
 export const inject = ["react", "host", "pages", "agents", "relay", "conversation", "panels", "navigation", "settingsCards"];
 export async function apply(ctx) {
-  if (typeof ctx.react.useEffectEvent !== "function") throw new Error("Buzz Editors requires a current Buzz build with React 19.2 or newer");
+  if (typeof ctx.react.useEffectEvent !== "function") throw new Error("Page Builder requires a current Buzz build with React 19.2 or newer");
   let stopped = false;
   let process;
   ctx.effect(() => () => {stopped = true;void process?.kill()});
