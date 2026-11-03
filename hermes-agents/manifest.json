@@ -1,0 +1,41 @@
+{
+  "id": "hermes.agents",
+  "name": "Hermes Agents",
+  "apiVersion": 1,
+  "description": "Run your Hermes Agent profiles as Buzz agents, each with its own memory, skills and model.",
+  "discovery": {
+    "category": "agents",
+    "tags": [
+      "Hermes",
+      "coding-agents"
+    ]
+  },
+  "host": {
+    "processes": [
+      {
+        "id": "hermes",
+        "program": "hermes"
+      }
+    ],
+    "commands": [
+      {
+        "id": "profiles",
+        "program": "bash",
+        "args": [
+          "-c",
+          "ls -1 \"$HOME/.hermes/profiles\" 2>/dev/null"
+        ],
+        "maxOutputBytes": 16384
+      },
+      {
+        "id": "home",
+        "program": "bash",
+        "args": [
+          "-c",
+          "printf %s \"$HOME\""
+        ],
+        "maxOutputBytes": 4096
+      }
+    ]
+  }
+}
