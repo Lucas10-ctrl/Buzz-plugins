@@ -4,6 +4,7 @@ import {
   responseSchema,
 } from "../../../../portable/editor-host/protocol";
 import type { EditorStore } from "./pages-client";
+import { processId } from "./editor-package";
 
 type Pending = { resolve(value: unknown): void; reject(error: Error): void };
 type Connection = {
@@ -110,7 +111,7 @@ export class DesktopEditorStore implements EditorStore {
       if (response.ok) request.resolve(response.value);
       else request.reject(new Error(response.error));
     });
-    const process = await spawn("editor-repository", {
+    const process = await spawn(processId("editor-repository"), {
       ...(this.dataRoot === undefined ? {} : { args: [this.dataRoot] }),
       onStdout: (chunk) => {
         try {

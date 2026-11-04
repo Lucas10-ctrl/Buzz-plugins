@@ -1,6 +1,6 @@
 # Third-party notices
 
-This plugin is MIT licensed by Lucas Mondora (see LICENSE). It also includes the following, under their own licenses. Other open-source packages in the bundled runtime keep their license files inside `backend/editor-host.tgz`.
+This plugin is MIT licensed by Lucas Mondora (see LICENSE). It also includes the following, under their own licenses. Other open-source packages in the bundled runtime keep their license files inside the downloaded runtime (`editor-host.tgz`).
 
 ## Buzz app (Block, Inc.)
 

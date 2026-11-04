@@ -1,13 +1,15 @@
-/** API-v1 entry: editor code is a hash-verified sibling of the declared native runtime. */
+/** API-v1 entry. The editor UI arrives through the declared launcher, which downloads and verifies it on first use. */
 export const inject = ["react", "host", "pages", "agents", "relay", "conversation", "panels", "navigation", "settingsCards"];
 export async function apply(ctx) {
   if (typeof ctx.react.useEffectEvent !== "function") throw new Error("Buzz Editors requires a current Buzz build with React 19.2 or newer");
+  const windows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
   let stopped = false;
   let process;
   ctx.effect(() => () => {stopped = true;void process?.kill()});
   let encoded = "";
+  let errors = "";
   let failure;
-  process = await ctx.host.spawn("editor-ui", {
+  process = await ctx.host.spawn(windows ? "editor-ui-win" : "editor-ui", {
     onStdout(chunk) {
       if (encoded.length + chunk.length > 32_000_000) {
         failure = new Error("Editor package exceeds its declared UI payload bound");
@@ -16,13 +18,14 @@ export async function apply(ctx) {
       }
       encoded += chunk;
     },
-    onStderr() { failure = new Error("The installed editor UI payload could not be read") },
+    onStderr(chunk) { errors = (errors + chunk).slice(-2000) },
   });
   if (stopped) {await process.kill();return}
   const code = await process.exited;
   if (stopped) return;
   if (failure) throw failure;
-  if (code !== 0) throw new Error("The installed editor UI loader failed");
+  if (code !== 0) throw new Error(`Buzz Editors could not start${errors.trim() ? `: ${errors.trim()}` : ""}`);
+  encoded = encoded.replace(/\s+/g, "");
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) throw new Error("Editor UI payload is not valid base64");
   const raw = atob(encoded), bytes = Uint8Array.from(raw, letter => letter.charCodeAt(0));
   encoded = "";

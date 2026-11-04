@@ -19,3 +19,17 @@ export const pageBuilderPluginId: string =
     : __BUZZ_PAGE_BUILDER_PLUGIN__;
 
 export const carriesEditor = (page: EditorPageId) => editorPages.includes(page);
+
+declare const __BUZZ_EDITOR_LAUNCHER__: boolean | undefined;
+
+/**
+ * Host process to spawn. Standalone plugins declare a separate PowerShell
+ * launcher for Windows (`<id>-win`); Editor Lab declares one bundled process.
+ */
+export const processId = (id: string): string =>
+  typeof __BUZZ_EDITOR_LAUNCHER__ !== "undefined" &&
+  __BUZZ_EDITOR_LAUNCHER__ &&
+  typeof navigator !== "undefined" &&
+  /Windows/i.test(navigator.userAgent)
+    ? `${id}-win`
+    : id;

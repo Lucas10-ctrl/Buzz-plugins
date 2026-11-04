@@ -305,7 +305,9 @@ try {
   );
   await mkdir(resources, { recursive: true });
   const credentialBuild = spawnSync(
-    join(root, "bin", process.platform === "win32" ? "cargo.exe" : "cargo"),
+    // BUZZ_CARGO lets CI use a toolchain from PATH (Windows has no hermit wrapper).
+    process.env.BUZZ_CARGO ??
+      join(root, "bin", process.platform === "win32" ? "cargo.exe" : "cargo"),
     ["build", "--locked", "--release", "-p", "buzz-editor-credentials"],
     { cwd: root, stdio: "inherit" },
   );

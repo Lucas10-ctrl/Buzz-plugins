@@ -21,7 +21,7 @@ export async function writeNotices(output){
   ['Inter font','SIL Open Font License 1.1.','portable/copyos-domain/fonts/OFL.txt'],
   ['Noto font','SIL Open Font License 1.1.','portable/copyos-domain/fonts/Noto-OFL.txt'],
  ];
- let text='# Third-party notices\n\nThis plugin is MIT licensed by Lucas Mondora (see LICENSE). It also includes the following, under their own licenses. Other open-source packages in the bundled runtime keep their license files inside `backend/editor-host.tgz`.\n';
+ let text='# Third-party notices\n\nThis plugin is MIT licensed by Lucas Mondora (see LICENSE). It also includes the following, under their own licenses. Other open-source packages in the bundled runtime keep their license files inside the downloaded runtime (`editor-host.tgz`).\n';
  for(const [name,about,path]of parts)text+=`\n## ${name}\n\n${about}\n\n\`\`\`text\n${(await read(path)).trim()}\n\`\`\`\n`;
  await writeFile(join(output,'THIRD-PARTY-NOTICES.md'),text);
 }

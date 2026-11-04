@@ -1,8 +1,1 @@
-# Editor plugins: native runtime is built locally (files exceed GitHub's 100 MB limit)
-/docs/backend/
-/canvas/backend/
-/page-builder/backend/
-/docs/checksums.json
-/canvas/checksums.json
-/page-builder/checksums.json
 node_modules/
