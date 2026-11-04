@@ -38,6 +38,11 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Keep line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.symlinks true
+
       - uses: actions/checkout@v4
         with:
           path: plugins
@@ -48,10 +53,7 @@ jobs:
         run: '[[ "$TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid tag: $TAG"; exit 1; }'
 
       - name: Restore editor source
-        run: |
-          git config --global core.autocrlf false
-          git config --global core.symlinks true
-          bash plugins/buzz-editors/restore.sh src
+        run: bash plugins/buzz-editors/restore.sh src
 
       - uses: actions/setup-node@v4
         with:

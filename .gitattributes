@@ -1,0 +1,2 @@
+# Keep editor source byte-for-byte on every OS: upstream.patch must apply exactly.
+buzz-editors/** -text
