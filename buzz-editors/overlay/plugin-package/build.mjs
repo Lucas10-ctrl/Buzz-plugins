@@ -15,6 +15,7 @@ import {gzipSync} from 'node:zlib';
 import {resolve,join} from 'node:path';
 import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
+import {writeNotices} from './notices.mjs';
 
 // brandTool: Buzz refuses two plugins adding the same agent tool, so each plugin names its own.
 // Page Builder keeps buzz_brand because the shared worker's guides refer to it.
@@ -90,6 +91,6 @@ for(const folder of chosen){
  hashes['editor-ui.mjs.gz']=digest(await readFile(join(output,'backend','editor-ui.mjs.gz')));
  await writeFile(join(output,'checksums.json'),JSON.stringify({frontend:digest(entry),backend:hashes},null,2)+'\n');
  await copyFile(join(root,'plugin-package/install.mjs'),join(output,'install.mjs'));
- await copyFile(join(root,'LICENSE'),join(output,'LICENSE'));
+ await writeNotices(output);
  console.log(`Packaged ${target.name} (${target.id}): ${code.length} JS characters at ${output}`);
 }

@@ -8,6 +8,10 @@ Part of the Buzz Editor Lab port of the original CopyOS editors. Linux x64 previ
 - Agent tools: `buzz_pages` (read and edit pages, sections and workflows) and `buzz_brand` (workspace brand and style guide).
 - Saved work: shared with the other editor plugins in `xyz.block.buzz.desktop/editor-workspaces/`, so Docs, Canvas and Page Builder can be installed alone or together.
 
+## Credits
+
+Website cloning is adapted from the Web Clone workflow of [OpenDesign](https://github.com/nexu-io/open-design), by jane (xiaoer), under the MIT license. See `THIRD-PARTY-NOTICES.md`.
+
 ## Install from GitHub (this machine)
 
 Settings → Plugins → Manage plugins → import from a Git or GitHub repository → `Lucas10-ctrl/Buzz-plugins`, branch `main` → pick **Page Builder** (`page-builder/plugin`) → install → restart Buzz.

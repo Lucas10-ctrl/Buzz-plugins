@@ -17,3 +17,7 @@ Docs, Canvas and Page Builder share their saved work, so install any one or all 
 **agent-skills, hermes-agents:** Buzz → Settings → Plugins → Manage plugins → **Load from folder** → pick the plugin folder. Reload the same folder later to update it.
 
 **docs, canvas, page-builder:** Settings → Plugins → Manage plugins → import from a Git or GitHub repository → `Lucas10-ctrl/Buzz-plugins`, branch `main` → pick the plugin. Their ~200 MB backend is built locally, not stored in git; see each folder's README.
+
+## License
+
+MIT, Copyright (c) 2026 Lucas Mondora. See [LICENSE](LICENSE). The editor plugins bundle parts of the Buzz app (Apache 2.0) and a few third-party libraries; each lists them in its `THIRD-PARTY-NOTICES.md`.

@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 DeepSeek
+Copyright (c) 2026 Lucas Mondora
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+This license covers the CopyOS editors (Docs, Canvas, Page Builder) in this
+folder. These parts keep their own licenses, in their own folders:
+
+- libraries/dsh-*: MIT, Copyright (c) 2026 DeepSeek (from DeepSeek Harness)
+- page-workflows/copyos-web-clone: adapted from OpenDesign's Web Clone
+  workflow (https://github.com/nexu-io/open-design), MIT,
+  Copyright (c) 2026 Jane (@xiaoerzhan)
+- fonts (Inter, Noto): SIL Open Font License 1.1, see the OFL files beside them

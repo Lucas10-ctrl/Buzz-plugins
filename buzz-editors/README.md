@@ -51,3 +51,7 @@ git ls-files --others --exclude-standard -z | rsync -a --from0 --files-from=- ./
 
 - 2026-11-03: split into three plugins (Docs, Canvas, Page Builder). Docs and Canvas name their brand tool `buzz_docs_brand` and `buzz_canvas_brand`; Page Builder keeps `buzz_brand`.
 - 2026-11-03: agents can create docs. Settings → Agent docs → "Let agents create docs" (off by default). See `CHANGE_AGENT_CREATED_DOCS.md`.
+
+## License
+
+The editors are MIT, Copyright (c) 2026 Lucas Mondora (`overlay/portable/COPYOS-LICENSE`). The Buzz app they build on is Apache 2.0 (Block, Inc.). The `dsh-*` helper libraries (DeepSeek Harness) and the `copyos-web-clone` workflow, adapted from [OpenDesign](https://github.com/nexu-io/open-design)'s Web Clone, keep their own MIT licenses in their folders.
