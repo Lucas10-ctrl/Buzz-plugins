@@ -55,6 +55,7 @@ export const docsOperations = new Set([
   "restoreDocVersion",
   "duplicateDoc",
   "trashDoc",
+  "moveDoc",
   "suggestDoc",
   "applyDocEdit",
   "outlineDoc",
@@ -269,6 +270,19 @@ export class DocsStore {
             document.extend({ trashed: z.boolean() }).strict().parse(input),
           ),
         );
+      case "moveDoc": {
+        const value = defined(
+          document
+            .extend({ targetWorkspaceId: workspace })
+            .strict()
+            .parse(input),
+        );
+        const target = await this.directory(value.targetWorkspaceId);
+        return this.docs.move(root, target, {
+          docId: value.docId,
+          ...(value.token === undefined ? {} : { token: value.token }),
+        });
+      }
       case "suggestDoc":
         return this.docs.suggest(
           root,

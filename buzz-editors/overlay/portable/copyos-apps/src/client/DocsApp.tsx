@@ -87,6 +87,8 @@ export type DocsAppProps = DocsAppActions & PropsLocale<'copyosFoundation'> & {
   readonly initialConversationOpen?: boolean
   readonly focusDocument?: () => void
   readonly leaveDocument?: () => void
+  /** Host-owned picker that moves the open document to another workspace. */
+  readonly moveDocument?: Readonly<{ label: string; open: (docId: string) => void }>
 }
 
 export function DocsApp(props: DocsAppProps): ReactNode {
@@ -625,6 +627,9 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                       await props.duplicateDoc(t('docsCopyTitle', { title: doc.title }).slice(0, 200))
                       requestAnimationFrame(() => { titleInput.current?.focus(); titleInput.current?.select() })
                     }) }}>{t('docsDuplicateDocument')}</button>
+                    {props.moveDocument ? <button disabled={pending} onClick={() => { run(async () => {
+                      await props.flushDocs(); setMoreOpen(false); props.moveDocument?.open(doc.id)
+                    }) }}>{props.moveDocument.label}</button> : null}
                     <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                       await props.trashDoc(doc.id, true); setLibraryOpen(true)
                     }) }}>{t('docsMoveTrash')}</button>

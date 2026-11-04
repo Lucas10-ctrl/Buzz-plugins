@@ -49,6 +49,9 @@ export type EditorDocCreation = Readonly<{
   targetFor(
     agent: Readonly<{ key: string; pubkey: string }>,
   ): Readonly<{ workspaceId: string; scope: string }> | undefined;
+  /** The owner's Solo workspaces, and the one a chat is filed in, for moving docs. */
+  workspaces?(): readonly Readonly<{ id: string; name: string }>[];
+  workspaceOf?(channel: string): string | undefined;
 }>;
 /** A saved main-result page; this does not mean the agent has finished building it. */
 export type EditorCreatedPage = Readonly<{ pageId: string; title: string }>;
@@ -431,6 +434,7 @@ export class EditorAgentBridge {
   docsTool(): AddedTool {
     const allowed = [
       "createDoc",
+      "moveDoc",
       "listDocs",
       "readDoc",
       "suggestDoc",
@@ -448,6 +452,7 @@ export class EditorAgentBridge {
       description:
         "Use buzz_brand readBrandContext for workspace voice, guardrails and style guidance. " +
         "createDoc takes title,sections:[headings] (at least one) and starts a new doc in the owner's selected Docs workspace when the owner has turned on agent doc creation. It binds that doc to this conversation for drafting: follow it with writeDoc per section (blockId from its blocks, its epoch, done:true) and share the returned link. " +
+        "moveDoc takes docId and workspace (a Solo workspace name or id; omit it to use the workspace this chat is filed in) and moves a doc from the owner's selected Docs workspace, or from this conversation's doc, with its history and attachments, when agent doc creation is on. An unknown workspace name lists the available ones. " +
         "Collaborate in the original Docs workspace. The owner's request binds the document, writing epoch and edit mode. readDoc returns the bound document, including blocks, tabs, epoch, revision, comments, suggestions and request (the owner’s exact context, selection and mode). Read it first. suggestDoc takes blockId,before,after,note,start (exact Markdown offset); it leaves content untouched for user review. applyDocEdit takes blockId,before,after,start and is allowed only for explicit apply requests. For a draft request, outlineDoc takes blockId,sections:[headings], optional title:{before,after}; read the returned new epoch before writeDoc. writeDoc takes blockId,epoch,content (append chunk),done and optional failed. appendDocSections takes epoch,sections; createDocTab takes title,sections,epoch. replyDocComment takes threadId,requestId,text. History reads take docId and optional before/revision. Workspace and Session attribution come from Buzz. Read before acting; preserve unrelated text.",
       inputSchema: {
         type: "object",
@@ -461,6 +466,8 @@ export class EditorAgentBridge {
       call: async (client, context, args) => {
         if (args.operation === "createDoc")
           return this.createDoc(client, context.channel, args.input);
+        if (args.operation === "moveDoc")
+          return this.moveDoc(client, context.channel, args.input);
         const binding = context.channel
           ? this.bindings.get(`${client.key}:${context.channel}`)
           : undefined;
@@ -642,6 +649,55 @@ export class EditorAgentBridge {
       },
     };
   }
+  /** Move a doc between the owner's Solo workspaces for an agent the owner allowed to create docs. */
+  private async moveDoc(
+    client: Readonly<{ key: string; pubkey: string }>,
+    channel: string | undefined,
+    fields: unknown,
+  ) {
+    const selected = channel ? this.docCreation?.targetFor(client) : undefined;
+    if (!channel || !selected)
+      throw new Error(
+        "Agent doc creation is off. The owner can turn on “Let agents create docs” in Settings → Agent docs, or move the doc from Docs.",
+      );
+    if (typeof fields !== "object" || fields === null || Array.isArray(fields))
+      throw new Error("input must be an object");
+    const input = fields as Record<string, unknown>;
+    const docId = typeof input.docId === "string" ? input.docId : "";
+    if (!docId) throw new Error("moveDoc needs a docId");
+    const workspaces = this.docCreation?.workspaces?.() ?? [];
+    const requested =
+      typeof input.workspace === "string" ? input.workspace.trim() : "";
+    const wanted = requested
+      ? workspaces.find(
+          (item) =>
+            item.id === requested ||
+            item.name.trim().toLowerCase() === requested.toLowerCase(),
+        )
+      : workspaces.find(
+          (item) => item.id === this.docCreation?.workspaceOf?.(channel),
+        );
+    if (!wanted)
+      throw new Error(
+        `${requested ? `No Solo workspace is named “${requested}”.` : "This chat is not filed in a Solo workspace; name one."} Available: ${
+          workspaces.map((item) => item.name).join(", ") || "none"
+        }`,
+      );
+    const key = `${client.key}:${channel}`;
+    const binding = this.bindings.get(key);
+    const source =
+      binding?.docs?.docId === docId
+        ? binding.workspaceId
+        : selected.workspaceId;
+    const targetWorkspaceId = editorWorkspaceId(selected.scope, wanted.id);
+    const doc = await this.store.call<{ id: string }>("moveDoc", {
+      workspaceId: source,
+      docId,
+      targetWorkspaceId,
+    });
+    if (binding?.docs?.docId === docId) this.bindings.delete(key);
+    return JSON.stringify({ ...doc, workspace: wanted.name });
+  }
   /** Start a doc for an agent the owner allowed, then bind it to this conversation for drafting. */
   private async createDoc(
     client: Readonly<{ key: string; pubkey: string }>,
@@ -722,6 +778,12 @@ export class EditorAgentBridge {
           ),
         };
       },
+      workspaces: () =>
+        ctx.relay.snapshot().session.soloPreferences.snapshot().data
+          ?.sections ?? [],
+      workspaceOf: (channel) =>
+        ctx.relay.snapshot().session.soloPreferences.snapshot().data
+          ?.assignments[channel],
     };
     if (carriesEditor("pages")) ctx.agents.addTool(this.tool());
     if (carriesEditor("canvas")) ctx.agents.addTool(this.canvasTool());

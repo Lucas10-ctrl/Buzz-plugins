@@ -9,6 +9,9 @@ import {
 import type { PluginModule } from "../../../plugins/api";
 import type { PageNavigation } from "../../../features/navigation/service";
 import { Button } from "../../../shared/design-system/ui/Button";
+import { AlertDialog } from "../../../shared/design-system/ui/AlertDialog";
+import { WorkspaceControl } from "../../../features/solo/WorkspaceControl";
+import { editorWorkspaceId } from "./workspace";
 import { FullPageSurface } from "../../../shared/design-system/ui/FullPageSurface";
 import {
   PanelHeader,
@@ -57,15 +60,18 @@ export function NativeDocs({
   const [owned, setOwned] = useState<{
     store: EditorStore;
     workspaceId: string;
+    generation: number;
     model: DocsModel;
   }>();
+  // A moved document leaves this workspace, so reload the library from disk.
+  const [generation, setGeneration] = useState(0);
   useEffect(() => {
     const model = new DocsModel(docsTransport(store));
-    setOwned({ store, workspaceId, model });
+    setOwned({ store, workspaceId, generation, model });
     return () => {
       void model.dispose();
     };
-  }, [store, workspaceId]);
+  }, [store, workspaceId, generation]);
   return (
     <FullPageSurface
       style={{
@@ -77,10 +83,31 @@ export function NativeDocs({
     >
       <PanelHeader title={<PanelHeaderLabel title="Docs" />} />
       {conversation.workspaceControls}
-      {owned?.store === store && owned.workspaceId === workspaceId ? (
+      {owned?.store === store &&
+      owned.workspaceId === workspaceId &&
+      owned.generation === generation ? (
         <EditorChromeProvider value={nativeEditorChrome}>
           <DocsView
+            key={generation}
             ctx={ctx}
+            store={store}
+            onMoved={() => {
+              setGeneration((value) => value + 1);
+              if (navigation)
+                void ctx.navigation.open({
+                  version: 1,
+                  kind: "page",
+                  pluginId:
+                    navigation.target.kind === "page"
+                      ? navigation.target.pluginId
+                      : "local.editor-lab",
+                  pageId: "docs",
+                  ...(navigation.target.kind === "page" &&
+                  navigation.target.scope !== undefined
+                    ? { scope: navigation.target.scope }
+                    : {}),
+                });
+            }}
             model={owned.model}
             conversation={conversation}
             navigation={navigation}
@@ -97,11 +124,15 @@ export function NativeDocs({
 
 function DocsView({
   ctx,
+  store,
+  onMoved,
   model,
   conversation,
   navigation,
 }: {
   ctx: Ctx;
+  store: EditorStore;
+  onMoved: () => void;
   model: DocsModel;
   conversation: ReturnType<typeof useEditorConversation>;
   navigation?: PageNavigation | undefined;
@@ -118,6 +149,9 @@ function DocsView({
   const connection = ctx.relay.snapshot();
   const { session, scope } = connection;
   const mounted = useRef(false);
+  const [moving, setMoving] = useState<{ docId: string; projectId: string }>();
+  const [moveError, setMoveError] = useState("");
+  const [moveBusy, setMoveBusy] = useState(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -193,7 +227,82 @@ function DocsView({
     );
   return (
     <div className={`${styles.workspace} ${styles.docsWorkspace}`}>
+      {moving && (
+        <AlertDialog
+          title="Move to workspace"
+          description="Choose the Solo workspace this document should live in. Its history and attachments move with it."
+          onClose={() => {
+            if (!moveBusy) setMoving(undefined);
+          }}
+          actions={
+            <>
+              <Button disabled={moveBusy} onClick={() => setMoving(undefined)}>
+                Cancel
+              </Button>
+              <Button
+                variant="prominent"
+                disabled={moveBusy}
+                onClick={() => {
+                  const targetWorkspaceId = editorWorkspaceId(
+                    scope ?? "local-preview",
+                    moving.projectId,
+                  );
+                  if (targetWorkspaceId === workspaceId) {
+                    setMoveError("Choose a different workspace.");
+                    return;
+                  }
+                  setMoveBusy(true);
+                  setMoveError("");
+                  void store
+                    .call("moveDoc", {
+                      workspaceId,
+                      docId: moving.docId,
+                      targetWorkspaceId,
+                    })
+                    .then(() => {
+                      setMoving(undefined);
+                      onMoved();
+                    })
+                    .catch((reason: unknown) =>
+                      setMoveError(
+                        reason instanceof Error
+                          ? reason.message
+                          : String(reason),
+                      ),
+                    )
+                    .finally(() => setMoveBusy(false));
+                }}
+              >
+                Move document
+              </Button>
+            </>
+          }
+        >
+          <WorkspaceControl
+            session={session}
+            value={moving.projectId}
+            disabled={moveBusy}
+            onChange={(projectId) =>
+              setMoving((current) =>
+                current ? { ...current, projectId } : current,
+              )
+            }
+          />
+          {moveError && (
+            <p role="alert" className="text-body text-danger">
+              {moveError}
+            </p>
+          )}
+        </AlertDialog>
+      )}
       <Docs
+        moveDocument={{
+          label: "Move to workspace…",
+          open: (docId) => {
+            setMoveError("");
+            setMoving({ docId, projectId: "" });
+          },
+        }}
         key={workspaceId}
         {...actions}
         workspaceId={workspaceId}

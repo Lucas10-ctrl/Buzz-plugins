@@ -6,7 +6,7 @@ import { assertAssistantStrategyEdit } from './docs-strategy.ts'
 /** Suite Docs: atomic portable storage, Yjs text merging and epoch-fenced agent actions. */
 import { zipSync } from 'fflate'
 import { randomUUID, randomBytes, createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, rename, writeFile, unlink } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as Y from 'yjs'
 import { z } from 'zod'
@@ -505,6 +505,52 @@ export class CopyOSDocRepository {
         return projection(record)
       } finally { doc.destroy() }
     })
+  }
+  /** Move a document, its history and its attachments to another workspace, keeping its identity.
+   * @param root - Source project root.
+   * @param targetRoot - Destination project root.
+   * @param request - Owner request naming the document.
+   * @returns The document as saved in the destination; pending assistant work is fenced as for Trash.
+   */
+  async move(root: string, targetRoot: string, request: { docId: string; token?: string }): Promise<CopyOSDocDocument> {
+    if (request.token !== undefined) throw new Error('Only the document owner can move a document')
+    if (root === targetRoot) throw new Error('This document is already in that workspace.')
+    const source = pathFor(root, request.docId), target = pathFor(targetRoot, request.docId)
+    return serial(source, () => serial(target, async () => {
+      let record: Record
+      try { record = await read(source) }
+      catch (error: unknown) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new Error('This document is not in the current workspace.')
+        throw error
+      }
+      try { await readFile(target); throw new Error('A document with this identity already exists in that workspace.') }
+      catch (error: unknown) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+      record.epoch++; record.stopped = true
+      for (const block of record.blocks) if (block.state === 'writing' || block.state === 'pending') block.state = 'paused'
+      for (const thread of record.comments) if (thread.assistant?.state === 'pending') thread.assistant.state = 'cancelled'
+      // Attachments are content-addressed and may be shared, so copy them and leave the source files.
+      for (const asset of record.assets) {
+        const name = asset.imageRef ? asset.imageRef.slice('copyos-asset:'.length) : asset.id
+        const folder = asset.imageRef ? join('assets', 'images') : join('docs', 'files')
+        await mkdir(join(targetRoot, folder), { recursive: true })
+        try { await cp(join(root, folder, name), join(targetRoot, folder, name), { force: false, errorOnExist: false }) }
+        catch (error: unknown) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+      }
+      const historyFrom = join(root, '.copywriter', 'doc-history', record.id)
+      const historyTo = join(targetRoot, '.copywriter', 'doc-history', record.id)
+      await mkdir(join(targetRoot, '.copywriter', 'doc-history'), { recursive: true, mode: 0o700 })
+      try { await cp(historyFrom, historyTo, { recursive: true, force: false, errorOnExist: false }) }
+      catch (error: unknown) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+      await mkdir(join(targetRoot, 'docs'), { recursive: true })
+      const temporary = `${target}.${randomUUID()}.tmp`
+      await writeFile(temporary, JSON.stringify(recordSchema.parse(record)), { flag: 'wx', mode: 0o600 })
+      try { await rename(temporary, target) }
+      catch (error: unknown) { await unlink(temporary); throw error }
+      await unlink(source)
+      await rm(historyFrom, { recursive: true, force: true })
+      this.presenceRooms.delete(source)
+      return projection(record)
+    }))
   }
   /** Change recoverable trash state, fencing pending assistant work while retaining document data.
    * @param root - Project root.
