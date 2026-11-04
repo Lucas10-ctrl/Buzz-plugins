@@ -4,12 +4,12 @@ Plugins for the Buzz desktop app. Each folder is one plugin.
 
 | Plugin | What it does |
 | --- | --- |
-| [docs](docs) | Docs editor: agent drafts, suggested edits and comment threads. |
-| [canvas](canvas) | Canvas design editor: build from copy, marks, asset generation and design-to-page. |
-| [page-builder](page-builder) | Visual page builder: website clones, shared section library, Shopify/Vercel export. |
+| [docs](docs) | Make and edit Documents like Notion, ChatGPT spaces and Claude Docs with agents and comment threads |
+| [canvas](canvas) | Figma-like design tool: build from copy, marks, asset generation and design-to-page. |
+| [page-builder](page-builder) | Claude design, but on steroids: website clones, pre-made section library, true drag and drop editor, and fully agentic abilities, plus various export functionality. |
 | [all-editors](all-editors) | Docs, Canvas and Page Builder together in one install. |
-| [agent-skills](agent-skills) | Gives each agent its own skills: reusable instructions it loads when a task matches. |
-| [hermes-agents](hermes-agents) | Runs your Hermes Agent profiles as Buzz agents, each with its own skills, model, and memory managed by your Hermes setup. |
+| [agent-skills](agent-skills) | Gives each agent its own skills with slash comments: reusable instructions it loads when a task matches. |
+| [hermes-agents](hermes-agents) | Choose hermes profiles for your Buzz agents, each with its own skills, model, and memory managed by your Hermes setup. Not just running on hermes, but individual profles. |
 
 ## Install
 
