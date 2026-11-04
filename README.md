@@ -9,7 +9,7 @@ Plugins for the Buzz desktop app. Each folder is one plugin.
 | [page-builder](page-builder) | Visual page builder: website clones, shared section library, Shopify/Vercel export. |
 | [all-editors](all-editors) | Docs, Canvas and Page Builder together in one install. |
 | [agent-skills](agent-skills) | Gives each agent its own skills: reusable instructions it loads when a task matches. |
-| [hermes-agents](hermes-agents) | Runs your Hermes Agent profiles as Buzz agents, each with its own memory, skills and model. |
+| [hermes-agents](hermes-agents) | Runs your Hermes Agent profiles as Buzz agents, each with its own skills, model, and memory managed by your Hermes setup. |
 
 ## Install
 
