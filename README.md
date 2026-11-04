@@ -4,8 +4,8 @@ Plugins for the Buzz desktop app. Each folder is one plugin.
 
 | Plugin | What it does |
 | --- | --- |
-| [docs](docs) | Make and edit Documents like Notion, ChatGPT spaces and Claude Docs with agents and comment threads |
-| [canvas](canvas) | Figma-like design tool: build from copy, marks, asset generation and design-to-page. Use it 100% agentically, or 100% manually. Includes professional level options like variables, auto-layout etc. |
+| [docs](docs) | Make and edit notion like documents inside Buzz. Inspired by ChatGPT spaces and Claude Docs with agents and comment threads. |
+| [canvas](canvas) | Figma-level design tool: 100% free. UI inspired by Figma, so it's easy to use and pick up. 100% agentically, or 100% manual design. Includes professional level options like variables, auto-layout etc. |
 | [page-builder](page-builder) | Claude design, but on steroids: website clones, pre-made section library, true drag and drop editor, and fully agentic abilities, plus various export options.|
 | [all-editors](all-editors) | Docs, Canvas and Page Builder together in one install. |
 | [agent-skills](agent-skills) | Gives each agent its own skills with slash commands: reusable instructions it loads when a task matches. Isolated in buzz. |
