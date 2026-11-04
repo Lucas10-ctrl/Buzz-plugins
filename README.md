@@ -1,6 +1,6 @@
 # Buzz plugins
 
-Plugins for the Buzz desktop app. Each folder is one plugin.
+Buzz is great for multi-agent coordination and project management. Here's some plugins I've built for  for the Buzz desktop app. Each folder is one plugin.
 
 | Plugin | What it does |
 | --- | --- |
