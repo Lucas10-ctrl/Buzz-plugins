@@ -148,6 +148,8 @@ function pack(lines){
 function unixLauncher(id,mode,{tag,base,sumsHash,ui}){
  const script=[
   'set -e',
+  '# Buzz on Linux runs as an AppImage whose LD_LIBRARY_PATH breaks system tools such as curl. Set it aside for the download, restore it for the editor.',
+  'if [ -n "${LD_LIBRARY_PATH+x}" ]; then L="$LD_LIBRARY_PATH"; unset LD_LIBRARY_PATH; fi',
   'case "$(uname -s)-$(uname -m)" in',
   'Linux-x86_64) p=linux-x64; A="${XDG_DATA_HOME:-$HOME/.local/share}";;',
   'Darwin-arm64) p=darwin-arm64; A="$HOME/Library/Application Support";;',
@@ -157,7 +159,7 @@ function unixLauncher(id,mode,{tag,base,sumsHash,ui}){
   `R="$A/buzz-editors/${tag}/$p"; U='${base}'; mkdir -p "$R"`,
   'h() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -c1-64; }',
   'g() { f="$R/$1"; [ -f "$f" ] && return 0; t="$f.$$"',
-  ' curl -fsSL --retry 3 "$U/$1" -o "$t" || { rm -f "$t"; echo "Could not download $1 from GitHub. Check your internet connection." >&2; exit 1; }',
+  ' curl -fsSL --retry 3 "$U/$1" -o "$t" || { rm -f "$t"; echo "Could not download $1 from GitHub." >&2; exit 1; }',
   ` if [ "$1" = SHA256SUMS ]; then e=${sumsHash}; else e="$(grep " $1\\$" "$R/SHA256SUMS" | cut -c1-64)"; fi`,
   ' [ "$(h "$t")" = "$e" ] || { rm -f "$t"; echo "Downloaded $1 failed its checksum." >&2; exit 1; }',
   ' mv -f "$t" "$f"; }',
@@ -165,6 +167,7 @@ function unixLauncher(id,mode,{tag,base,sumsHash,ui}){
   'D="$R/rt"',
   'if [ ! -d "$D" ]; then x="$D.$$"; mkdir "$x"; tar -xzf "$R/runtime-$p.tar.gz" -C "$x" 2>/dev/null; if [ -d "$D" ]; then rm -rf "$x"; else mv "$x" "$D"; fi; fi',
   `if [ "$m" = ui ]; then a="$R/${ui}"; else a="$A/xyz.block.buzz.desktop/editor-workspaces"; fi`,
+  'if [ -n "${L+x}" ]; then export LD_LIBRARY_PATH="$L"; fi',
   'exec "$D/buzz-editor-host" "$D/launch.mjs" "$m" "$a"',
  ];
  const args=['-c','m=$1; shift; s=; for a; do s="$s$a"; done; eval "$s"','sh',mode,...pack(script)];
@@ -182,7 +185,7 @@ function windowsLauncher(id,mode,{tag,base,sumsHash,ui}){
   'New-Item -ItemType Directory -Force -Path $R | Out-Null;',
   'function H($f) { (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLower() };',
   'function G($n) { $f=Join-Path $R $n; if (Test-Path -LiteralPath $f) { return }; $t=$f+$PID;',
-  " try { Invoke-WebRequest -UseBasicParsing -Uri ($U+$n) -OutFile $t } catch { [Console]::Error.WriteLine('Could not download '+$n+' from GitHub. Check your internet connection.'); exit 1 };",
+  " try { Invoke-WebRequest -UseBasicParsing -Uri ($U+$n) -OutFile $t } catch { [Console]::Error.WriteLine('Could not download '+$n+' from GitHub: '+$_.Exception.Message); exit 1 };",
   ` if ($n -eq 'SHA256SUMS') { $e='${sumsHash}' } else { $e=(Get-Content -LiteralPath (Join-Path $R 'SHA256SUMS') | Where-Object { $_.EndsWith(' '+$n) } | ForEach-Object { $_.Substring(0,64) }) };`,
   " if ((H $t) -ne $e) { Remove-Item -LiteralPath $t; [Console]::Error.WriteLine('Downloaded '+$n+' failed its checksum.'); exit 1 }; Move-Item -Force -LiteralPath $t -Destination $f };",
   `G 'SHA256SUMS'; G 'runtime-win32-x64.tar.gz'; G '${ui}';`,
