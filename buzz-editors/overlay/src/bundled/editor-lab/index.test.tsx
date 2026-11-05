@@ -35,7 +35,7 @@ it("registers three topbar workspace destinations and removes them on disable", 
         layout,
       })),
     ).toEqual([
-      { id: "docs", title: "Docs", placement: "topbar", layout: "workspace" },
+      { id: "docs", title: "Docs", placement: "sidebar", layout: "workspace" },
       {
         id: "canvas",
         title: "Canvas",

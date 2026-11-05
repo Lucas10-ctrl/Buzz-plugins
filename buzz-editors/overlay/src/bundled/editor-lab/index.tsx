@@ -94,7 +94,8 @@ export const apply: PluginModule["apply"] = (ctx) => {
     ctx.pages.register({
       ...page,
       primary: true,
-      placement: "topbar",
+      // Docs sits in the sidebar with Usage; Canvas and Page Builder stay in the top bar.
+      placement: page.id === "docs" ? "sidebar" : "topbar",
       layout: "workspace",
       ...(page.id === "docs"
         ? {
