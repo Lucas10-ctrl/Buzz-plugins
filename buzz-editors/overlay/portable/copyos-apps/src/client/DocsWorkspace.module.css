@@ -1862,3 +1862,23 @@
 :global(html:not([data-keyboard-navigation])) .workspace select:focus-visible { outline: none; }
 .workspace button:not([data-buzz-ui]):focus-visible, .workspace select:focus-visible, .prose:focus-visible { outline-color: var(--border-focus); outline-offset: 2px; }
 .libraryOpen > .libraryWorkspace { display: block; }
+
+/* ---------- Composer, round 3: one surface ----------
+   The scope controls sit inside the composer as a quiet first row, not a tab stuck to its top edge.
+   One hairline border, one soft shadow; focus only strengthens the border. */
+.workspace .assistantDock,
+.workspace .assistantDock[data-conversation-open='false'],
+.workspace .assistantDock[data-resting='true'] {
+  border: 1px solid var(--border-standard); box-shadow: var(--shadow-xs); border-radius: var(--radius-container, 24px);
+  padding: var(--space-2, 8px);
+}
+.workspace .assistantDock:focus-within { border-color: var(--border-prominent); box-shadow: var(--shadow-xs); }
+.workspace .assistantDock[data-conversation-open='false'] .askScope,
+.workspace .assistantDock .askScope {
+  position: static; inset: auto; z-index: auto;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 8px);
+  min-height: 0; margin: 0 0 var(--space-1, 4px); padding: 0 0 0 var(--space-1, 4px);
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+}
+.workspace .assistantDock .askScope[hidden] { display: none; }
+.workspace .askScope button, .workspace .askScope select { min-height: 28px; border-radius: var(--radius-pill, 999px); }
