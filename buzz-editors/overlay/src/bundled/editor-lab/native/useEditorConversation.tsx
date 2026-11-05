@@ -444,6 +444,7 @@ export function useEditorConversation(
   return {
     connection,
     workspaceControls,
+    workspaceName: workspace.name,
     agent,
     workspaceId,
     send,

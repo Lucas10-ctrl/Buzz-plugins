@@ -48,6 +48,8 @@ git ls-files --others --exclude-standard -z | rsync -a --from0 --files-from=- ./
 
 ## Changes
 
+- 2026-11-04: Docs looks native to Buzz. Comments sit in the right margin beside the text they discuss (the panel becomes "All comments" and the fallback on narrow windows). A document list on the left replaces the title dropdown and holds the workspace picker. The header is a breadcrumb with History, Link and Share. Highlights, cards, rows and buttons use Buzz design tokens. Buzz's extra "Docs" header row and workspace row are gone.
+
 - 2026-11-04: Docs can move a document to another Solo workspace (••• → Move to workspace…), with its history and attachments. Agents can do the same with `buzz_docs` `moveDoc` when “Let agents create docs” is on.
 - 2026-11-03: one-click install on macOS, Linux and Windows. Plugins download a verified runtime from GitHub Releases on first use; added All Editors.
 - 2026-11-03: split into three plugins (Docs, Canvas, Page Builder). Docs and Canvas name their brand tool `buzz_docs_brand` and `buzz_canvas_brand`; Page Builder keeps `buzz_brand`.

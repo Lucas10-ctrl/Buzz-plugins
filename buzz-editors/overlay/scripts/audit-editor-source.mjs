@@ -21,6 +21,9 @@ const adapters = new Set([
   "DocsReadView.tsx",
   "DocsLibrary.tsx",
   "DocsWorkspace.module.css",
+  // Buzz-native Docs chrome: margin comments, document list and breadcrumb header (2026-11-04).
+  "DocsComments.tsx",
+  "locales/docs.ts",
   "DesignerWebsiteBuildPrompt.ts",
   "DesignerBuildFromCopy.tsx",
   "DesignerReview.tsx",

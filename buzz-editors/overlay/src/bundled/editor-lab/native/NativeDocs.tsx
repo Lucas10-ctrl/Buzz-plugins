@@ -14,10 +14,6 @@ import { WorkspaceControl } from "../../../features/solo/WorkspaceControl";
 import { editorWorkspaceId } from "./workspace";
 import { FullPageSurface } from "../../../shared/design-system/ui/FullPageSurface";
 import {
-  PanelHeader,
-  PanelHeaderLabel,
-} from "../../../shared/design-system/ui/PanelHeader";
-import {
   Docs,
   DocsModel,
   en,
@@ -81,8 +77,6 @@ export function NativeDocs({
         minHeight: 0,
       }}
     >
-      <PanelHeader title={<PanelHeaderLabel title="Docs" />} />
-      {conversation.workspaceControls}
       {owned?.store === store &&
       owned.workspaceId === workspaceId &&
       owned.generation === generation ? (
@@ -306,6 +300,8 @@ function DocsView({
         key={workspaceId}
         {...actions}
         workspaceId={workspaceId}
+        workspaceTitle={conversation.workspaceName}
+        workspacePicker={conversation.workspaceControls}
         useDocs={useDocs}
         useDocsRoute={useDocsRoute}
         documentLink={(intent) =>

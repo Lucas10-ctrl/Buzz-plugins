@@ -2,7 +2,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   IconClockOutlineRegular, IconDeliverDocRegular, IconPaperclipOutlineRegular, IconPlusOutlineRegular,
-  IconNewChatOutlineRegular, IconSparkleRegular,
+  IconNewChatOutlineRegular, IconSparkleRegular, IconLinkOutlineRegular, IconPanelLeftOutlineRegular,
   IconShareOutlineRegular, Menu, Tooltip, useDismissOnOutsidePointer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -14,7 +14,9 @@ import type { DocsRequestPresentation } from './DocsAssistantRequest.ts'
 import { isBlankDocForOutline } from './DocsAssistantRequest.ts'
 import { printDoc } from './DocsPrint.ts'
 import { DocsLibrary } from './DocsLibrary.tsx'
-import { DocsComments } from './DocsComments.tsx'
+import { DocsCommentMargin, DocsComments } from './DocsComments.tsx'
+import { docsShortAgo, useDocsNow } from './DocsTime.ts'
+import { useEditorChrome } from '../EditorChrome.tsx'
 import { commentDraftPrefix, readCommentDrafts, readReplyDraft } from './DocsCommentDrafts.ts'
 import { assistantDraftKey, clearAssistantDraft, readAssistantDraft, saveAssistantDraft, watchAssistantDraftClear,
   type DocsAssistantDraft } from './DocsAssistantDrafts.ts'
@@ -79,6 +81,10 @@ export type DocsAppProps = DocsAppActions & PropsLocale<'copyosFoundation'> & {
   readonly useDocs: <T>(selector: (state: DocsSnapshot) => T) => T
   readonly useDocsRoute: <T>(selector: (route: DocsRoute | null) => T) => T
   readonly workspaceId: string
+  /** Workspace name for the breadcrumb. */
+  readonly workspaceTitle?: string | undefined
+  /** Host workspace controls, shown at the top of the document list and above the library. */
+  readonly workspacePicker?: ReactNode
   readonly documentLink?: ((route: DocsRoute) => string) | undefined
   readonly session?: boolean
   readonly assistantWorking?: boolean
@@ -108,7 +114,11 @@ export function DocsApp(props: DocsAppProps): ReactNode {
   const [googleHandoff, setGoogleHandoff] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(() => !props.session && !route?.docId && !new URLSearchParams(location.hash.slice(1)).has('doc'))
   const [outlineOpen, setOutlineOpen] = useState(false)
-  const [pagesOpen, setPagesOpen] = useState(false)
+  const [pagesOpen, setPagesOpen] = useState(() => localStorage.getItem('copyos.docs.rail') !== 'false')
+  const [allComments, setAllComments] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const now = useDocsNow()
+  const { Button: ChromeButton, DocumentIcon } = useEditorChrome()
   const pagesButton = useRef<HTMLButtonElement>(null)
   const pagesId = useId()
   const [wide, setWide] = useState(() => localStorage.getItem('copyos.docs.wide') === 'true')
@@ -135,6 +145,21 @@ export function DocsApp(props: DocsAppProps): ReactNode {
   useEffect(() => { if (props.assistantBlocked) { setConversationOpen(true); setCommentsOpen(false) } }, [props.assistantBlocked])
   const [small, setSmall] = useState(() => matchMedia('(max-width: 767px)').matches)
   useEffect(() => { if (small) setPagesOpen(false) }, [small])
+  const toggleRail = (open: boolean): void => {
+    setPagesOpen(open)
+    if (!small) localStorage.setItem('copyos.docs.rail', String(open))
+  }
+  const [marginRoom, setMarginRoom] = useState(false)
+  useEffect(() => {
+    const element = scroll.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { setMarginRoom(element.clientWidth >= 980) })
+    observer.observe(element)
+    return () => { observer.disconnect() }
+  }, [!!doc, libraryOpen])
+  const marginMode = marginRoom && !small
+  const marginComments = marginMode && !allComments
+  const panelOpen = marginMode ? allComments : commentsOpen
   const workspaceRoot = useRef<HTMLElement>(null)
   const [mobileEditing, setMobileEditing] = useState(false)
   const [askTarget, setAskTarget] = useState<DocsAssistantDraft['target']>(null)
@@ -442,6 +467,28 @@ export function DocsApp(props: DocsAppProps): ReactNode {
     [t],
   )
   const waiting = doc?.blocks.some(b => b.state !== 'ready')
+  const commentProps = (document: CopyOSDocDocument) => ({
+    resolveAsset: props.resolveDocAsset, document, t,
+    draft: state.commentDrafts.find(item => item.id === commentDraft?.id) ?? commentDraft, active: activeComment,
+    draftDetached: !!commentDraft && (state.detachedCommentDraftIds?.includes(commentDraft.id) ?? false),
+    draftStorageFailed: state.commentDraftStorageFailed,
+    draftPrefix: commentDraftPrefix(workspaceId, document.id),
+    restoreDraft: (draft: CopyOSDocCommentDraft): void => {
+      const current = state.commentDrafts.find(item => item.id === draft.id) ?? draft
+      setCommentDraft(current); setCommentsOpen(true)
+      const block = document.blocks.find(item => item.id === current.blockId)
+      if (block) props.selectDocTab(block.tabId ?? document.id)
+    },
+    canComment, canAsk, assistantWorking: props.assistantWorking ?? false, labels, apply: applyComment, ask: askThread,
+    review: props.reviewDoc, select: selectComment,
+    close: (): void => {
+      if (marginMode) setAllComments(false); else setCommentsOpen(false)
+      requestAnimationFrame(() => commentsButton.current?.focus())
+    },
+    cancelDraft: (): void => { if (commentDraft) props.discardCommentDraft(commentDraft.id); setCommentDraft(null) },
+    threadLink,
+    copyLink: async (id: string): Promise<void> => { await navigator.clipboard.writeText(threadLink(id)) },
+  })
   return (
     <section ref={workspaceRoot} className={`${css.workspace} ${libraryOpen ? css.libraryOpen : ''} ${wide ? css.wide : ''}`}
       onPointerDownCapture={(event) => { if (event.target !== askInput.current) focusAfterSend.current = null }}
@@ -460,6 +507,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
         const files = Array.from(event.target.files ?? []); event.target.value = ''
         if (files.length) run(() => props.attachDocFiles(files))
       }} />
+      {libraryOpen && props.workspacePicker ? <div className={css.libraryWorkspace}>{props.workspacePicker}</div> : null}
       {libraryOpen ? <DocsLibrary importFile={() => { importInput.current?.click() }} t={t}
         documents={state.documents} trashedDocuments={state.trashedDocuments}
         restore={(id) => { run(async () => {
@@ -469,45 +517,44 @@ export function DocsApp(props: DocsAppProps): ReactNode {
         create={() => { run(createDocument) }} close={doc ? () => {
           setLibraryOpen(false); requestAnimationFrame(() => libraryButton.current?.focus())
         } : undefined} /> : null}
+      <div className={css.shell} hidden={libraryOpen}>
+      {pagesOpen && doc ? <nav id={pagesId} className={css.pagesNav} aria-label={t('docsPages')}
+        onKeyDown={(event) => { if (event.key === 'Escape' && small) { toggleRail(false); pagesButton.current?.focus() } }}>
+        <div className={css.pagesHeading}><strong>{t('docsDocsRail')}</strong>
+          {canAsk ? <Tooltip label={t('docsNew')} portal><button type="button" className={css.headerTool} aria-label={t('docsNew')} disabled={pending}
+            onClick={() => { run(async () => { await createDocument(); if (small) setPagesOpen(false) }) }}><IconPlusOutlineRegular size={16} /></button></Tooltip> : null}
+          <Tooltip label={t('docsHideDocs')} portal><button type="button" className={css.headerTool} aria-label={t('docsHideDocs')}
+            onClick={() => { toggleRail(false); requestAnimationFrame(() => pagesButton.current?.focus()) }}><IconPanelLeftOutlineRegular size={16} /></button></Tooltip>
+        </div>
+        {props.workspacePicker ? <div className={css.railWorkspaceRow}>{props.workspacePicker}</div> : null}
+        <div className={css.pagesList}>{(state.documents.some(item => item.id === doc.id) ? state.documents : [doc, ...state.documents]).map((item) => {
+          const current = item.id === doc.id ? doc : item, ago = docsShortAgo(current.updatedAt, now)
+          return <button key={item.id} type="button" disabled={pending}
+            aria-current={item.id === doc.id ? 'page' : undefined} title={current.title || t('docsUntitled')}
+            onClick={() => { run(async () => { await openDocument(item.id); if (small) setPagesOpen(false) }) }}>
+            <span className={css.pageIcon} aria-hidden="true"><DocumentIcon size={16} /></span>
+            <span className={css.pageText}><strong>{current.title || t('docsUntitled')}</strong>
+              <small>{ago ? t('docsEditedAgo', { time: ago }) : t('docsEditedNow')}</small></span>
+          </button>
+        })}</div>
+        {!route?.token && !new URLSearchParams(location.hash.slice(1)).has('token') ? <button ref={libraryButton} type="button" className={css.pagesAll}
+          onClick={() => { run(async () => { await props.refreshDocLibrary(); setLibraryOpen(true) }) }}>{t('docsAll')}</button> : null}
+      </nav> : null}
+      <div className={css.main}>
       <header className={css.topbar} hidden={libraryOpen}>
         <div className={css.breadcrumb}>
-          {!route?.token && !new URLSearchParams(location.hash.slice(1)).has('token') ? <button ref={libraryButton}
-            aria-label={t('docsAll')} title={t('docsAll')} onClick={() => { run(async () => {
-              await props.refreshDocLibrary(); setLibraryOpen(true)
-            }) }}>←</button> : null}
-          <div className={css.documentPicker}>
-            {doc && !libraryOpen ? <button ref={pagesButton} aria-label={t('docsPages')}
-              title={t('docsPages')} aria-expanded={pagesOpen} aria-controls={pagesId}
-              onClick={() => { setPagesOpen(!pagesOpen); setOutlineOpen(false) }}><IconDeliverDocRegular size={17} /></button>
-              : <IconDeliverDocRegular size={17} />}
-            <select
-              aria-label={t('docsSelect')}
-              value={doc?.id ?? ''}
-              disabled={pending || state.readOnly}
-              onChange={(e) => {
-                run(() => openDocument(e.target.value))
-              }}
-            >
-              {doc && !state.documents.some(d => d.id === doc.id) ? <option value={doc.id}>{doc.title}</option> : null}
-              {state.documents.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.title}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!pagesOpen || small ? <Tooltip label={t('docsShowDocs')} portal><button ref={pagesButton} type="button" className={css.headerTool}
+            aria-label={t('docsShowDocs')} aria-expanded={pagesOpen} aria-controls={pagesId} disabled={!doc}
+            onClick={() => { toggleRail(!pagesOpen); setOutlineOpen(false) }}><IconPanelLeftOutlineRegular size={16} /></button></Tooltip> : null}
+          {props.workspaceTitle ? <><span className={css.crumbWorkspace}>{props.workspaceTitle}</span>
+            <span className={css.crumbDivider} aria-hidden="true">/</span></> : null}
+          <strong className={css.crumbTitle} title={doc?.title}>{doc ? doc.title || t('docsUntitled') : t('docsDocsRail')}</strong>
           <span className={css.saveState} role="status">
-            {t(
-              exporting ? 'docsExporting' : state.status === 'saved'
-                ? 'docsSaved'
-                : state.status === 'saving'
-                  ? 'docsSaving'
-                  : state.status === 'offline'
-                    ? 'docsOffline'
-                    : state.status === 'loading'
-                      ? 'docsLoading'
-                      : 'docsError',
-            )}
+            {exporting ? t('docsExporting') : state.status === 'saving' ? t('docsSaving')
+              : state.status === 'offline' ? t('docsOffline') : state.status === 'loading' ? t('docsLoading')
+                : state.status === 'saved' ? doc ? docsShortAgo(doc.updatedAt, now)
+                  ? t('docsEditedAgo', { time: docsShortAgo(doc.updatedAt, now) }) : t('docsEditedNow') : t('docsSaved')
+                  : t('docsError')}
           </span>
         </div>
         <div className={css.topActions}>
@@ -533,19 +580,6 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               </button>
             </>
           ) : null}
-          {canAsk ? (
-            <button
-              className={css.newDocButton}
-              title={t('docsNew')}
-              aria-label={t('docsNew')}
-              disabled={pending}
-              onClick={() => {
-                run(createDocument)
-              }}
-            >
-              ＋
-            </button>
-          ) : null}
           {pendingSuggestions.length ? (
             <button
               className={css.reviewCount}
@@ -559,10 +593,10 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               {t('docsReviewCount', { count: String(pendingSuggestions.length) })}
             </button>
           ) : null}
-          {doc ? <Tooltip label={t('docsCommentsCount', { count: String(doc.comments?.filter(thread => !thread.resolved).length ?? 0) })} portal>
-            <button ref={commentsButton} className={css.headerTool} aria-label={t('docsComments')} aria-pressed={commentsOpen}
-              onClick={() => { setCommentsOpen(!commentsOpen) }}>
-              <IconNewChatOutlineRegular size={17} />
+          {doc ? <Tooltip label={marginMode ? t('docsAllComments') : t('docsCommentsCount', { count: String(doc.comments?.filter(thread => !thread.resolved).length ?? 0) })} portal>
+            <button ref={commentsButton} className={css.headerTool} aria-label={t(marginMode ? 'docsAllComments' : 'docsComments')} aria-pressed={panelOpen}
+              onClick={() => { if (marginMode) setAllComments(!allComments); else setCommentsOpen(!commentsOpen) }}>
+              <IconNewChatOutlineRegular size={16} />
               {doc.comments?.filter(thread => !thread.resolved).length || null}
             </button>
           </Tooltip> : null}
@@ -574,24 +608,30 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               }}
               aria-label={t('docsAskAssistant')}
             >
-              <IconSparkleRegular size={17} />
+              <IconSparkleRegular size={16} />
             </button></Tooltip>
           ) : null}
-          {doc && canAsk ? (
-            <button
-              className={css.shareButton}
-              aria-label={t('docsShare')}
-              onClick={() => {
-                setCopied(false); setShareOpen(true)
-              }}
-            >
-              {small ? <IconShareOutlineRegular size={18} /> : t('docsShare')}
-            </button>
-          ) : null}
+          {doc && !state.readOnly ? <span className={css.headerLabelled}><ChromeButton type="button" variant="ghost" size="sm"
+            aria-label={t('docsHistory')} onClick={() => { setHistoryOpen(true) }}>
+            <IconClockOutlineRegular size={16} /><span className={css.headerLabel}>{t('docsHistoryShort')}</span></ChromeButton></span> : null}
+          {doc && !route?.token ? <span className={css.headerLabelled}><ChromeButton type="button" variant="ghost" size="sm"
+            aria-label={t('docsCopyDocLink')} onClick={() => { run(async () => {
+              await props.flushDocs()
+              const params = new URLSearchParams(location.hash.slice(1))
+              params.set('suite', 'docs'); params.set('workspace', workspaceId); params.set('doc', doc.id)
+              for (const key of ['tab', 'thread', 'anchorStart', 'anchorEnd', 'token', 'role']) params.delete(key)
+              await navigator.clipboard.writeText(documentLink(params))
+              setLinkCopied(true); setTimeout(() => { setLinkCopied(false) }, 1600)
+            }) }}>
+            <IconLinkOutlineRegular size={16} /><span className={css.headerLabel}>{t(linkCopied ? 'docsCopied' : 'docsLink')}</span></ChromeButton></span> : null}
+          {doc && canAsk ? <span className={css.headerLabelled}><ChromeButton type="button" variant="ghost" size="sm" aria-label={t('docsShare')}
+            onClick={() => { setCopied(false); setShareOpen(true) }}>
+            <IconShareOutlineRegular size={16} /><span className={css.headerLabel}>{t('docsShare')}</span></ChromeButton></span> : null}
           {doc ? (
             <div className={css.popoverAnchor}>
               <button
                 ref={optionsButton}
+                className={css.headerTool}
                 aria-label={t('docsMore')}
                 aria-expanded={moreOpen}
                 onClick={() => {
@@ -602,6 +642,9 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               </button>
               {moreOpen ? (
                 <div className={css.menu}>
+                  {!route?.token && !new URLSearchParams(location.hash.slice(1)).has('token') ? <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
+                    await props.refreshDocLibrary(); setLibraryOpen(true)
+                  }) }}>{t('docsAll')}</button> : null}
                   {props.focusDocument ? <button disabled={pending} onClick={() => { run(async () => {
                     await props.flushDocs(); setMoreOpen(false); props.focusDocument?.()
                   }) }}>{t('docsFocusDocument')}</button> : null}
@@ -622,6 +665,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                     attachmentInput.current.accept = ''; attachmentInput.current.click()
                   } }}>{t('docsAttachFile')}</button> : null}
                   {canAsk ? <>
+                    <button disabled={pending} onClick={() => { setMoreOpen(false); run(createDocument) }}>{t('docsNew')}</button>
                     <button onClick={() => { setMoreOpen(false); importInput.current?.click() }}>{t('docsImport')}</button>
                     <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                       await props.duplicateDoc(t('docsCopyTitle', { title: doc.title }).slice(0, 200))
@@ -641,7 +685,6 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                   <button aria-pressed={wide} onClick={() => {
                     const value = !wide; setWide(value); localStorage.setItem('copyos.docs.wide', String(value)); setMoreOpen(false); requestAnimationFrame(() => optionsButton.current?.focus())
                   }}>{t(wide ? 'docsStandardWidth' : 'docsWideWidth')}</button>
-                  {!state.readOnly ? <button onClick={() => { setMoreOpen(false); setHistoryOpen(true) }}>{t('docsHistory')}</button> : null}
                   <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                     await props.flushDocs()
                     if (articleRef.current) await printDoc(articleRef.current, doc, t('docsPrintImageFailed'), t('docsTabNumber', { number: '1' }))
@@ -701,17 +744,6 @@ export function DocsApp(props: DocsAppProps): ReactNode {
           await navigator.clipboard.writeText(documentLink(params))
         }} /></div> : null}
       <div className={css.documentBody} hidden={libraryOpen}>
-        {pagesOpen && doc ? <nav id={pagesId} className={css.pagesNav} aria-label={t('docsPages')}
-          onKeyDown={(event) => { if (event.key === 'Escape') { setPagesOpen(false); pagesButton.current?.focus() } }}>
-          <div className={css.pagesHeading}><strong>{t('docsPages')}</strong>
-            <button aria-label={t('docsClosePages')} onClick={() => { setPagesOpen(false); pagesButton.current?.focus() }}>×</button></div>
-          <div className={css.pagesList}>{state.documents.map(item => <button key={item.id} disabled={pending}
-            aria-current={item.id === doc.id ? 'page' : undefined} title={item.id === doc.id ? doc.title : item.title}
-            onClick={() => { run(async () => { await openDocument(item.id); if (small) setPagesOpen(false) }) }}>
-            <IconDeliverDocRegular size={16} /><span>{item.id === doc.id ? doc.title : item.title}</span>
-          </button>)}</div>
-          {canAsk ? <button className={css.pagesCreate} disabled={pending} onClick={() => { run(createDocument) }}>＋ {t('docsNew')}</button> : null}
-        </nav> : null}
         {outlineOpen && doc ? <nav className={css.outline} aria-label={t('docsOutline')}>
           <div><strong>{t('docsOutline')}</strong><button aria-label={t('docsCloseOutline')} onClick={() => { setOutlineOpen(false); optionsButton.current?.focus() }}>×</button></div>
           {blocks.map((block, index) => isStrategyDocument(doc) && block.state === 'pending' ? null : <button key={block.id} title={block.label || block.content.split('\n')[0]} onClick={() => {
@@ -748,6 +780,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               )}
             </div>
           ) : (
+            <div className={css.page} data-margin={marginComments}>
             <article ref={articleRef} tabIndex={-1} aria-label={doc.title || t('docsUntitled')} className={css.document}
               onFocusCapture={(event) => { if (small && event.target !== event.currentTarget) setMobileEditing(true) }}
               onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setMobileEditing(false) }}>
@@ -769,15 +802,6 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                 }}
                 placeholder={t('docsUntitled')}
               />
-              <div className={css.docMeta}>
-                <time dateTime={doc.createdAt}>
-                  {new Date(doc.createdAt).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </time>
-              </div>
               {initialDraft && (pending || props.assistantWorking) ? <p className={css.initialPlanning} role="status">{t('docsPlanningHint')}</p> : null}
               {tabs.map(tab => <div key={tab.id} role="tabpanel" id={`docs-tab-panel-${tab.id}`}
                 aria-labelledby={`docs-tab-${tab.id}`} hidden={tab.id !== activeTab}
@@ -851,26 +875,12 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                 </button>
               ) : null}
             </article>
+            {marginComments ? <DocsCommentMargin key={doc.id} anchors={articleRef} openAll={() => { setAllComments(true) }}
+              {...commentProps(doc)} open /> : null}
+            </div>
           )}
         </div>
-        {doc ? <DocsComments key={doc.id} resolveAsset={props.resolveDocAsset} open={commentsOpen}
-          document={doc} t={t} draft={state.commentDrafts.find(item => item.id === commentDraft?.id) ?? commentDraft} active={activeComment}
-          draftDetached={!!commentDraft && (state.detachedCommentDraftIds?.includes(commentDraft.id) ?? false)}
-          draftStorageFailed={state.commentDraftStorageFailed}
-          draftPrefix={commentDraftPrefix(workspaceId, doc.id)} restoreDraft={(draft) => {
-            const current = state.commentDrafts.find(item => item.id === draft.id) ?? draft
-            setCommentDraft(current); setCommentsOpen(true)
-            const block = doc.blocks.find(item => item.id === current.blockId)
-            if (block) props.selectDocTab(block.tabId ?? doc.id)
-          }}
-          canComment={canComment}
-          canAsk={canAsk} assistantWorking={props.assistantWorking ?? false} labels={labels} apply={applyComment} ask={askThread}
-          review={props.reviewDoc} select={selectComment} close={() => {
-            setCommentsOpen(false); requestAnimationFrame(() => commentsButton.current?.focus())
-          }}
-          cancelDraft={() => { if (commentDraft) props.discardCommentDraft(commentDraft.id); setCommentDraft(null) }}
-          threadLink={threadLink}
-          copyLink={async (id) => { await navigator.clipboard.writeText(threadLink(id)) }} /> : null}
+        {doc ? <DocsComments key={doc.id} {...commentProps(doc)} {...(marginComments ? { draft: null } : {})} open={panelOpen} heading={marginMode ? t('docsAllComments') : undefined} /> : null}
       </div>
       {doc && canAsk && !(small && (commentsOpen || mobileEditing)) ? (
         <section
@@ -999,6 +1009,8 @@ export function DocsApp(props: DocsAppProps): ReactNode {
           </form>
         </section>
       ) : null}
+      </div>
+      </div>
       {historyOpen && doc ? <DocsHistory key={doc.id} docId={doc.id} t={t} resolveAsset={props.resolveDocAsset}
         load={props.listDocHistory} read={props.readDocHistory}
         name={props.nameDocVersion} restore={props.restoreDocVersion} onClose={() => {
