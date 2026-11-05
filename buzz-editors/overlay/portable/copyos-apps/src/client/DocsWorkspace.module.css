@@ -1766,3 +1766,99 @@
 .workspace .formatbar button[aria-label='Strikethrough'] { text-decoration: line-through; }
 .workspace .formatbar .askSelection { border-right: 1px solid var(--border-standard); border-radius: 10px 0 0 10px; }
 .richContent ::selection, .workspace .title::selection { background: var(--surface-text-selection); color: inherit; }
+
+/* ---------- Buzz polish, round 2 ---------- */
+/* Scope strip: a tab joined to the composer's top edge, same fill and border, no gap. */
+.workspace .assistantDock[data-conversation-open='false'] .askScope {
+  bottom: calc(100% - 1px); left: var(--space-5, 20px); right: var(--space-5, 20px); z-index: 1;
+  min-height: 32px; padding: var(--space-1, 4px) var(--space-1, 4px) 3px; gap: var(--space-2, 8px);
+  background: var(--surface-composer, var(--surface-panel)); border: 1px solid var(--border-standard); border-bottom: 0;
+  border-radius: var(--radius-chip, 12px) var(--radius-chip, 12px) 0 0;
+}
+.workspace .assistantDock:focus-within[data-conversation-open='false'] .askScope { border-color: var(--border-focus); }
+.workspace .askScope select { appearance: none; padding-right: 24px; background: var(--affordance-subtle) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center; }
+.workspace .askScope button:hover, .workspace .askScope select:hover { background-color: var(--affordance-subtle-hover); }
+.workspace .askScope > span { color: var(--text-subtle); font-size: var(--text-caption, 12px); padding-left: var(--space-2, 8px); }
+
+/* Workspace row in the document list: name, picker and Brand settings on one quiet line. */
+.railWorkspaceRow > * > p:first-child { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.railWorkspaceRow > * > button:last-of-type { padding-inline: var(--space-2, 8px); }
+
+/* Share dialog and backdrop: Buzz modal geometry and fills. */
+.workspace .backdrop { background: var(--bg-scrim, rgba(0, 0, 0, 0.32)); backdrop-filter: none; }
+.workspace .dialog {
+  width: min(100%, 25rem); padding: var(--space-8, 32px); border-radius: var(--radius-panel, 28px);
+  background: var(--surface-popover); border: 1px solid var(--border-standard); box-shadow: var(--shadow-panel);
+  font-size: var(--text-body-sm, 14px); color: var(--text-standard); display: flex; flex-direction: column; gap: var(--space-3, 12px);
+}
+.workspace .dialogHeading { margin: 0 0 var(--space-1, 4px); }
+.workspace .dialogHeading h2 { font-size: var(--text-body-lg, 20px); font-weight: var(--type-weight-medium, 500); letter-spacing: var(--text-body-lg--letter-spacing, -0.01em); }
+.workspace .dialogHeading button { width: 32px; min-height: 32px; padding: 0; border-radius: var(--radius-icon-button, 10px); font-size: 20px; color: var(--text-subtle); background: var(--affordance-subtle); }
+.workspace .dialog p { opacity: 1; color: var(--text-subtle); font-size: var(--text-caption, 12px); margin: 0; }
+.workspace .dialog .shareHint { margin: 0; }
+.workspace .dialog select {
+  appearance: none; min-height: 40px; padding: 0 36px 0 var(--space-4, 16px); margin: 0; border: 1px solid transparent;
+  border-radius: var(--radius-control, 20px); color: var(--text-standard);
+  background: var(--surface-inset) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center;
+}
+.workspace .dialog select:hover { border-color: var(--border-prominent); }
+.workspace .primary { min-height: 40px; padding: 0 var(--space-6, 24px); border-radius: var(--radius-capsule, 34px); background: var(--affordance-prominent, var(--text-standard)); color: var(--text-on-prominent, var(--surface-panel)); font-weight: var(--type-weight-medium, 500); }
+.workspace .primary:hover { background: var(--affordance-prominent-hover, var(--affordance-prominent, var(--text-standard))); }
+.workspace .dialog .revoke { opacity: 1; margin: 0 auto; font-size: var(--text-caption, 12px); color: var(--text-danger); min-height: 32px; border-radius: var(--radius-capsule, 34px); padding: 0 var(--space-3, 12px); }
+
+/* History modal: Inter, Buzz surfaces, rows like the document list. */
+.historyModal { background: var(--surface-popover); color: var(--text-standard); border-radius: var(--radius-panel, 28px); }
+.history { font-family: var(--font-sans); }
+.historyHeader { border-bottom-color: var(--border-standard); padding: var(--space-5, 20px) var(--space-6, 24px); }
+.historyHeader h2 { font-size: var(--text-body-lg, 20px); font-weight: var(--type-weight-medium, 500); }
+.historyHeader p, .historyTimeline time, .historyTimeline small, .historyFooter span { opacity: 1; color: var(--text-subtle); }
+.historyHeader > button { width: 32px; height: 32px; border-radius: var(--radius-icon-button, 10px); font-size: 20px; color: var(--text-subtle); }
+.historyTimeline { border-right-color: var(--border-standard); padding: var(--space-3, 12px) var(--space-2, 8px); }
+.historyTimeline button { padding: var(--space-2, 8px) var(--space-3, 12px); border-radius: var(--radius-chip, 12px); gap: 2px; }
+.historyTimeline button:hover, .historyHeader > button:hover { background: var(--affordance-panel-hover); }
+.historyTimeline button[aria-current='true'] { background: var(--affordance-selected); }
+.historyTimeline h3 { color: var(--text-subtle); font-size: var(--text-caption, 12px); }
+.historyFooter { border-top-color: var(--border-standard); padding: var(--space-4, 16px) var(--space-6, 24px); }
+.historyDocument { font-size: 16px; line-height: 1.6; }
+.historyDocument h1 { font-size: var(--text-title, 32px); font-weight: var(--type-weight-medium, 500); letter-spacing: var(--text-title--letter-spacing, -0.015em); }
+.historyDocument h2 { font-size: var(--text-body-lg, 20px); font-weight: var(--type-weight-medium, 500); }
+.historyControls input:not([type='checkbox']):not(:where([data-buzz-ui], [data-buzz-ui] *)) { background: var(--surface-inset); border: 1px solid transparent; border-radius: var(--radius-control, 20px); min-height: 40px; padding: 0 var(--space-4, 16px); }
+
+/* All documents: Buzz page heading, search field, segmented filter, hover rows. */
+.library { padding-top: var(--space-8, 32px); }
+.library h1 { font-size: var(--text-title, 32px); font-weight: var(--type-weight-medium, 500); letter-spacing: var(--text-title--letter-spacing, -0.015em); line-height: 1.1; margin: 0 0 var(--space-2, 8px); color: var(--text-standard); }
+.library header p { opacity: 1; color: var(--text-subtle); }
+.librarySearch input {
+  min-height: 40px; padding: 0 var(--space-4, 16px); border: 1px solid transparent; border-radius: var(--radius-control, 20px);
+  background: var(--surface-inset); font-size: var(--text-body-sm, 14px); outline: none; transition: border-color 150ms ease;
+}
+.librarySearch input:focus { border-color: var(--border-prominent); }
+.librarySearch input::placeholder { color: var(--text-metadata, var(--text-subtle)); }
+.libraryTabs { gap: 2px; padding: 2px; border-radius: var(--radius-pill, 999px); background: var(--surface-inset); align-self: flex-start; width: fit-content; }
+.workspace .libraryTabs button { min-height: 28px; padding: 0 var(--space-3, 12px); border-radius: var(--radius-pill, 999px); font-size: var(--text-caption, 12px); font-weight: var(--type-weight-medium, 500); color: var(--text-subtle); }
+.workspace .libraryTabs button[aria-pressed='true'] { background: var(--surface-panel); color: var(--text-standard); box-shadow: var(--shadow-xs); }
+.libraryCount { opacity: 1; color: var(--text-subtle); }
+.libraryList li { border-bottom: 0; }
+.workspace .libraryList button { padding: var(--space-3, 12px); border-radius: var(--radius-row, 16px); gap: var(--space-4, 16px); }
+.workspace .libraryList button:hover { background: var(--affordance-panel-hover); }
+.libraryList button > svg { opacity: 1; color: var(--text-subtle); }
+.libraryList strong { font-size: var(--text-label-sm, 14px); color: var(--text-standard); }
+.libraryList span > span, .libraryList time { opacity: 1; color: var(--text-subtle); font-size: var(--text-caption, 12px); }
+.libraryWorkspace > * { padding-inline: max(24px, calc((100% - 880px) / 2)) !important; padding-top: var(--space-3, 12px) !important; }
+
+/* Tabs, outline and banners. */
+.docTabs { gap: 2px; padding: var(--space-1, 4px) var(--space-4, 16px); border-bottom-color: var(--border-standard); background: var(--surface-panel); }
+.docTabs button { min-height: 32px; padding: 0 var(--space-3, 12px); border-radius: var(--radius-pill, 999px); font-size: var(--text-body-sm, 14px); color: var(--text-subtle); }
+.docTabs button:hover { background: var(--affordance-subtle-hover); }
+.docTabs button[aria-selected='true'] { background: var(--affordance-selected); color: var(--text-standard); }
+.outline { border-right-color: var(--border-standard); padding: var(--space-3, 12px) var(--space-2, 8px); background: var(--surface-panel); }
+.outline > div { font-size: var(--text-label-sm, 14px); font-weight: var(--type-weight-medium, 500); min-height: 40px; }
+.workspace .outline > button { min-height: 32px; border-radius: var(--radius-chip, 12px); font-size: var(--text-body-sm, 14px); color: var(--text-subtle); }
+.workspace .outline > button:hover { background: var(--affordance-panel-hover); color: var(--text-standard); }
+.trashBanner, .legacyRecovery { background: var(--affordance-warning); color: var(--text-standard); font-size: var(--text-body-sm, 14px); }
+.error { background: var(--affordance-danger, color-mix(in srgb, var(--text-danger) 10%, transparent)); color: var(--text-danger); font-size: var(--text-body-sm, 14px); }
+/* Focus rings follow Buzz: shown for keyboard navigation only, in the focus colour. */
+:global(html:not([data-keyboard-navigation])) .workspace button:not([data-buzz-ui]):focus-visible,
+:global(html:not([data-keyboard-navigation])) .workspace select:focus-visible { outline: none; }
+.workspace button:not([data-buzz-ui]):focus-visible, .workspace select:focus-visible, .prose:focus-visible { outline-color: var(--border-focus); outline-offset: 2px; }
+.libraryOpen > .libraryWorkspace { display: block; }

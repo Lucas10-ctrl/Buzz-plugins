@@ -959,7 +959,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
               })
             }}
           >
-            {askTarget ? (
+            {askTarget && (askTarget.quote || doc.blocks.find(b => b.id === askTarget.blockId)?.label) ? (
               <blockquote className={css.askQuote}>
                 {askTarget.quote || doc.blocks.find(b => b.id === askTarget.blockId)?.label}
               </blockquote>
