@@ -1882,3 +1882,6 @@
 }
 .workspace .assistantDock .askScope[hidden] { display: none; }
 .workspace .askScope button, .workspace .askScope select { min-height: 28px; border-radius: var(--radius-pill, 999px); }
+/* Long requests grow upward; the + / history / send buttons stay pinned to the bottom line, as in Buzz's composer. */
+.workspace .askInputRow { align-items: flex-end; }
+.workspace .askInputRow textarea { align-self: stretch; }
