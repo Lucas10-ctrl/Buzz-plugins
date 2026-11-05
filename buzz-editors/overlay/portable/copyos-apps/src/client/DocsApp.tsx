@@ -2,7 +2,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   IconClockOutlineRegular, IconDeliverDocRegular, IconPaperclipOutlineRegular, IconPlusOutlineRegular,
-  IconNewChatOutlineRegular, IconSparkleRegular, IconLinkOutlineRegular, IconPanelLeftOutlineRegular,
+  IconNewChatOutlineRegular, IconSparkleRegular, IconLinkOutlineRegular, IconPanelLeftOutlineRegular, IconEllipsisOutlineRegular,
   IconShareOutlineRegular, Menu, Tooltip, useDismissOnOutsidePointer,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -638,7 +638,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                   setMoreOpen(!moreOpen)
                 }}
               >
-                •••
+                <IconEllipsisOutlineRegular size={16} />
               </button>
               {moreOpen ? (
                 <div className={css.menu}>
@@ -665,6 +665,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                     attachmentInput.current.accept = ''; attachmentInput.current.click()
                   } }}>{t('docsAttachFile')}</button> : null}
                   {canAsk ? <>
+                    <hr className={css.menuSeparator} />
                     <button disabled={pending} onClick={() => { setMoreOpen(false); run(createDocument) }}>{t('docsNew')}</button>
                     <button onClick={() => { setMoreOpen(false); importInput.current?.click() }}>{t('docsImport')}</button>
                     <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
@@ -676,15 +677,17 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                     }) }}>{props.moveDocument.label}</button> : null}
                     <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                       await props.trashDoc(doc.id, true); setLibraryOpen(true)
-                    }) }}>{t('docsMoveTrash')}</button>
+                    }) }} data-danger="true">{t('docsMoveTrash')}</button>
                   </> : null}
+                  <hr className={css.menuSeparator} />
                   {!readOnly && tabs.length === 1 ? <button onClick={() => {
                     setMoreOpen(false); props.addDocTab(t('docsTabNumber', { number: '2' }))
                   }}>{t('docsNewTab')}</button> : null}
-                  <button aria-pressed={outlineOpen} onClick={() => { setOutlineOpen(!outlineOpen); setPagesOpen(false); setMoreOpen(false); requestAnimationFrame(() => optionsButton.current?.focus()) }}>{t('docsOutline')}</button>
+                  <button aria-pressed={outlineOpen} onClick={() => { setOutlineOpen(!outlineOpen); setMoreOpen(false); requestAnimationFrame(() => optionsButton.current?.focus()) }}>{t('docsOutline')}</button>
                   <button aria-pressed={wide} onClick={() => {
                     const value = !wide; setWide(value); localStorage.setItem('copyos.docs.wide', String(value)); setMoreOpen(false); requestAnimationFrame(() => optionsButton.current?.focus())
                   }}>{t(wide ? 'docsStandardWidth' : 'docsWideWidth')}</button>
+                  <hr className={css.menuSeparator} />
                   <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                     await props.flushDocs()
                     if (articleRef.current) await printDoc(articleRef.current, doc, t('docsPrintImageFailed'), t('docsTabNumber', { number: '1' }))
@@ -997,8 +1000,8 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                   aria-label={t(conversationOpen ? 'docsCollapseConversation' : 'docsExpandConversation')}
                   onClick={() => { setConversationOpen(!conversationOpen) }}><IconClockOutlineRegular size={16} /></button>
               </Tooltip> : null}
-              <button disabled={pending || props.assistantBlocked || !brief.trim() || missingDraftScope || selectionChanged} aria-label={t('docsSendAssistant')}>
-                ↑
+              <button className={css.sendButton} data-ready={!!brief.trim()} disabled={pending || props.assistantBlocked || !brief.trim() || missingDraftScope || selectionChanged} aria-label={t('docsSendAssistant')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
               </button>
             </div>
             <p hidden={!conversationOpen && editMode !== 'apply'}>{t(initialDraft ? 'docsPlanningHint'

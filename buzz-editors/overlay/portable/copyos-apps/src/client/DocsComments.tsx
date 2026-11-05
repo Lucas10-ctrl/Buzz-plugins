@@ -96,6 +96,8 @@ export function DocsComments(props: Props): ReactNode {
   </aside>
 }
 const marginGap = 12
+// Card padding plus half the byline: puts the author line level with the highlighted text.
+const marginLead = 10
 
 /** Open threads beside the passages they discuss, each card lined up with its highlight and pushed down to avoid overlap.
  * Detached threads, unsent drafts and filters stay in the All comments panel.
@@ -124,7 +126,7 @@ export function DocsCommentMargin(props: Props & { readonly anchors: RefObject<H
           const anchor = root.querySelector(`[data-doc-comment="${CSS.escape(id)}"]`)
             ?? root.querySelector(`[id="doc-block-${CSS.escape(block)}"]`)
           const box = anchor?.getBoundingClientRect()
-          return { id, height: element.offsetHeight, want: box && box.height > 0 ? box.top - base : Number.NaN }
+          return { id, height: element.offsetHeight, want: box && box.height > 0 ? box.top - base - marginLead : Number.NaN }
         }).filter(card => !Number.isNaN(card.want)).sort((a, b) => a.want - b.want)
         const next: Record<string, number> = {}
         const focus = cards.findIndex(card => card.id === active || card.id === draft?.id)
