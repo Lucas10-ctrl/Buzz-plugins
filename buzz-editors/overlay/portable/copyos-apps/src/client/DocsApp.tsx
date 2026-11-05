@@ -95,6 +95,8 @@ export type DocsAppProps = DocsAppActions & PropsLocale<'copyosFoundation'> & {
   readonly leaveDocument?: () => void
   /** Host-owned picker that moves the open document to another workspace. */
   readonly moveDocument?: Readonly<{ label: string; open: (docId: string) => void }>
+  /** Host-owned brand settings for this workspace, offered in the document menu. */
+  readonly brandSettings?: Readonly<{ label: string; open: () => void }>
 }
 
 export function DocsApp(props: DocsAppProps): ReactNode {
@@ -687,6 +689,7 @@ export function DocsApp(props: DocsAppProps): ReactNode {
                   <button aria-pressed={wide} onClick={() => {
                     const value = !wide; setWide(value); localStorage.setItem('copyos.docs.wide', String(value)); setMoreOpen(false); requestAnimationFrame(() => optionsButton.current?.focus())
                   }}>{t(wide ? 'docsStandardWidth' : 'docsWideWidth')}</button>
+                  {props.brandSettings ? <button onClick={() => { setMoreOpen(false); props.brandSettings?.open() }}>{props.brandSettings.label}</button> : null}
                   <hr className={css.menuSeparator} />
                   <button disabled={pending} onClick={() => { setMoreOpen(false); run(async () => {
                     await props.flushDocs()

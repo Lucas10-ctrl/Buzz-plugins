@@ -11,12 +11,14 @@ export function EditorWorkspaceControl({
   projectId,
   choose,
   disabled = false,
+  fullWidth = false,
 }: {
   session: RelaySession;
   owner: string;
   projectId: string;
   choose(id: string): boolean;
   disabled?: boolean;
+  fullWidth?: boolean;
 }) {
   const [pending, setPending] = useState<{
     id: string;
@@ -38,6 +40,7 @@ export function EditorWorkspaceControl({
         session={session}
         value={projectId}
         disabled={disabled}
+        fullWidth={fullWidth}
         onChange={(id) => {
           if (id !== projectId && !disabled) setPending({ id, owner, session });
         }}

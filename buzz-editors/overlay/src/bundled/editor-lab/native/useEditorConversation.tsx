@@ -343,6 +343,31 @@ export function useEditorConversation(
       "interrupt",
     );
   }, [ctx, currentConversation, revokeRequest]);
+  const openBrandSettings = () =>
+    void ctx.navigation.open({
+      version: 1,
+      kind: "settings",
+      section: "local.editor-lab/brand",
+    });
+  /** Docs shows the workspace as one labelled dropdown; Brand settings lives in its document menu. */
+  const workspacePicker = (
+    <>
+      <EditorWorkspaceControl
+        owner={workspace.workspaceId}
+        session={session}
+        projectId={workspace.projectId}
+        choose={workspace.choose}
+        disabled={working}
+        fullWidth
+      />
+      {workspace.unavailable && (
+        <p role="alert" className="text-caption text-danger">
+          This workspace is unavailable. Choose an existing Solo workspace or No
+          workspace.
+        </p>
+      )}
+    </>
+  );
   const workspaceControls = (
     <div className={styles.workspaceControls}>
       <p className="text-caption text-subtle">{workspace.name}</p>
@@ -444,7 +469,10 @@ export function useEditorConversation(
   return {
     connection,
     workspaceControls,
-    workspaceName: workspace.name,
+    // Docs names the unfiled choice the way the workspace dropdown does.
+    workspaceName: workspace.projectId ? workspace.name : "No workspace",
+    workspacePicker,
+    openBrandSettings,
     agent,
     workspaceId,
     send,

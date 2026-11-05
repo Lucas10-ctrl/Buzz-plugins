@@ -301,7 +301,11 @@ function DocsView({
         {...actions}
         workspaceId={workspaceId}
         workspaceTitle={conversation.workspaceName}
-        workspacePicker={conversation.workspaceControls}
+        workspacePicker={conversation.workspacePicker}
+        brandSettings={{
+          label: "Brand settings",
+          open: conversation.openBrandSettings,
+        }}
         useDocs={useDocs}
         useDocsRoute={useDocsRoute}
         documentLink={(intent) =>
