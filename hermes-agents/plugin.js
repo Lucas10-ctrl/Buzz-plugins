@@ -40,6 +40,16 @@ export function apply(ctx) {
     Create,
     tabs: [{ id: "settings", title: "Settings", role: "settings", component: SettingsTab }],
     timeoutMs: 5 * 60_000,
+    // Buzz refuses to start an agent with synced settings unless its type
+    // declares them. The profile syncs; a synced copy without one keeps the
+    // profile saved on this device.
+    syncedSettings: {
+      schema: { profile: "string" },
+      withSynced: (config, settings) => ({
+        ...config,
+        profile: typeof settings?.profile === "string" ? settings.profile : profileOf(config),
+      }),
+    },
     run: (delivery) => runtime.run(delivery),
   });
 }
