@@ -84,9 +84,150 @@ function summonContext(skills) {
   return skills
     .map(
       (skill) =>
-        `The user summoned your skill /${commandOf(skill.name)} in this message. Follow it for this request:\n<skill name="${skill.name}">\n${skill.body.trim()}\n</skill>`,
+        `The user summoned your skill /${commandOf(skill.name)} in this message. Follow it for this request:\n<skill name="${skill.name}">\n${skill.body.trim()}${folderNote(skill)}\n</skill>`,
     )
     .join("\n\n");
+}
+
+// ---- Skill folders ---------------------------------------------------------
+// A skill can be linked to a folder (SKILL.md plus reference files). Buzz lets
+// plugins read files but not list folders, so reference files are found by
+// following the paths SKILL.md (and the files it points to) mention.
+
+/** Files the plugin follows into, looking for more references. */
+const TEXT_FILE = /\.(md|markdown|mdx|txt)$/i;
+/** Extensions a bare or backticked path needs before it counts as a file. */
+const REFERENCE_FILE =
+  /\.(md|markdown|mdx|txt|json|jsonl|ya?ml|toml|csv|tsv|html?|css|xml|svg|py|js|mjs|cjs|ts|tsx|jsx|sh|bash|sql|ini|cfg|liquid|png|jpe?g|gif|webp|pdf)$/i;
+/** An absolute, home ("~/…") or Windows drive path. */
+const ABSOLUTE = /^([/\\~]|[a-z]:[\\/])/i;
+const MAX_REFERENCES = 150;
+const MAX_LOOKUPS = 400;
+/** The most text one `read` returns. */
+const READ_LIMIT = 120000;
+
+/** `path` inside the skill folder, as "a/b.md", or "" when it leaves it. */
+export function insideFolder(path) {
+  const parts = [];
+  for (const part of String(path ?? "").split(/[\\/]+/)) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (!parts.length) return "";
+      parts.pop();
+    } else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+/** `path` as a path inside `folder` ("a/b.md"), or "" when it is elsewhere.
+ * A relative path is taken from the folder. An absolute one counts when it
+ * is under the folder, or names the folder's own name, as skills written on
+ * another computer do ("/home/someone/skills/copy-chief/references/a.md"). */
+export function inFolder(path, folder = "") {
+  const text = String(path ?? "").trim();
+  if (!ABSOLUTE.test(text)) return insideFolder(text);
+  const parts = text.split(/[\\/]+/).filter(Boolean);
+  const base = String(folder).split(/[\\/]+/).filter(Boolean);
+  const name = base[base.length - 1];
+  if (!name) return "";
+  const own = base.join("/");
+  const joined = parts.join("/");
+  if (joined.toLowerCase().startsWith(`${own.toLowerCase()}/`))
+    return insideFolder(joined.slice(own.length + 1));
+  const at = parts.map((part) => part.toLowerCase()).lastIndexOf(name.toLowerCase());
+  return at >= 0 && at < parts.length - 1 ? insideFolder(parts.slice(at + 1).join("/")) : "";
+}
+
+/** File paths a Markdown text mentions: links, `code` and bare. */
+export function referencedPaths(text) {
+  const found = new Set();
+  const add = (raw, anyExtension) => {
+    let path = String(raw).trim().replace(/^<|>$/g, "").split(/[?#]/)[0];
+    try {
+      path = decodeURI(path);
+    } catch {}
+    path = path.replace(/[.,;:!?]+$/, "");
+    if (!path || path.endsWith("/")) return;
+    // URLs are not files; Windows drives ("C:") are.
+    if (/^[a-z][a-z0-9+.-]+:/i.test(path)) return;
+    if (!anyExtension && !REFERENCE_FILE.test(path)) return;
+    if (!/\.[a-z0-9]{1,8}$/i.test(path)) return;
+    found.add(path);
+  };
+  const source = String(text ?? "");
+  for (const [, target] of source.matchAll(/\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+["'][^"']*["'])?\s*\)/g))
+    add(target, true);
+  for (const [, target] of source.matchAll(/^\s*\[[^\]]+\]:\s*(\S+)/gm)) add(target, true);
+  for (const [, code] of source.matchAll(/`([^`\n]+)`/g))
+    if (!/\s/.test(code.trim())) add(code, false);
+  for (const [, bare] of source.matchAll(
+    /(?:^|[\s("'*_[])((?:~?\/|\.{1,2}\/)?(?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[a-z0-9]{1,8})(?=$|[\s)"'*_\],;:!?]|\.(?:\s|$))/gim,
+  ))
+    add(bare, false);
+  return [...found];
+}
+
+/** The reference files a skill folder's SKILL.md leads to, relative to the
+ * folder. `readText(path)` reads one (relative to the folder) or rejects. */
+export async function discoverReferences(readText, body, entry = "SKILL.md", folder = "") {
+  const files = new Set();
+  const tried = new Set([insideFolder(entry).toLowerCase()]);
+  const queue = [{ dir: "", text: body, depth: 0 }];
+  let lookups = 0;
+  while (queue.length && files.size < MAX_REFERENCES) {
+    const { dir, text, depth } = queue.shift();
+    for (const ref of referencedPaths(text)) {
+      // Relative to the file that mentions it, then to the folder itself.
+      const candidates = ABSOLUTE.test(ref)
+        ? [inFolder(ref, folder)]
+        : [...new Set([insideFolder(`${dir}/${ref}`), insideFolder(ref)])];
+      for (const path of candidates) {
+        if (!path || files.has(path)) break;
+        if (tried.has(path.toLowerCase())) continue;
+        if (++lookups > MAX_LOOKUPS) return [...files].sort();
+        tried.add(path.toLowerCase());
+        let content;
+        try {
+          content = await readText(path);
+        } catch {
+          continue;
+        }
+        files.add(path);
+        if (depth < 3 && TEXT_FILE.test(path))
+          queue.push({ dir: path.split("/").slice(0, -1).join("/"), text: content, depth: depth + 1 });
+        break;
+      }
+      if (files.size >= MAX_REFERENCES) break;
+    }
+  }
+  return [...files].sort();
+}
+
+/** What an agent is told about a linked skill's folder. */
+function folderNote(skill) {
+  if (!skill.folder) return "";
+  const files = skill.files ?? [];
+  const lines = [
+    "",
+    "",
+    `This skill is a folder: ${skill.folder}`,
+    `When its instructions point to a file in it, read that file with the \`${TOOL}\` tool (action "read", name "${skill.name}", file "<path in the folder>"), or open it straight from the folder if you can read files.`,
+  ];
+  if (files.length)
+    lines.push("Files it refers to:", ...files.map((file) => `- ${file}`));
+  return lines.join("\n");
+}
+
+const decodeText = (bytes) => new TextDecoder().decode(bytes);
+
+/** Reads a linked skill's entry file and finds its reference files. */
+async function readSkillFolder(host, folder, entry = "SKILL.md") {
+  if (typeof host?.readFile !== "function")
+    throw new Error("This Buzz version can't read files for plugins.");
+  const readText = async (path) => decodeText(await host.readFile(path, { cwd: folder }));
+  const parsed = parseSkillFile(await readText(entry), folder.split(/[\\/]/).filter(Boolean).pop());
+  const files = await discoverReferences(readText, parsed.body, entry, folder);
+  return { ...parsed, files };
 }
 
 /** Reads YAML-ish frontmatter (name, description) from a SKILL.md file. */
@@ -172,6 +313,11 @@ function createSkillStore(storage) {
         enabled: skill.enabled !== false,
         updatedAt: Date.now(),
       };
+      if (skill.folder) {
+        entry.folder = String(skill.folder);
+        entry.entry = String(skill.entry || "SKILL.md");
+        entry.files = Array.isArray(skill.files) ? skill.files.map(String) : [];
+      }
       if (!entry.name) throw new Error("A skill needs a name");
       const clash = skills.find(
         (other) =>
@@ -229,7 +375,7 @@ function skillContext(skills) {
         body = `${body.slice(0, Math.max(0, budget))}\n…[truncated: load the full text with ${TOOL}]`;
       }
       budget -= body.length;
-      parts.push(`<skill name="${skill.name}">\n${body}\n</skill>`);
+      parts.push(`<skill name="${skill.name}">\n${body}${folderNote(skill)}\n</skill>`);
     }
   }
   return parts.join("\n");
@@ -248,34 +394,62 @@ export async function apply(ctx) {
   const React = ctx.react;
   const store = createSkillStore(agents.storage);
 
+  /** Re-reads a linked skill's folder so agents get its current text; keeps
+   * the saved copy when the folder can't be read. */
+  const refresh = async (pubkey, skill) => {
+    if (!skill.folder) return skill;
+    try {
+      const fresh = await readSkillFolder(host, skill.folder, skill.entry);
+      if (!fresh.body) return skill;
+      if (
+        fresh.body === skill.body &&
+        JSON.stringify(fresh.files) === JSON.stringify(skill.files ?? [])
+      )
+        return skill;
+      return await store.save(pubkey, { ...skill, body: fresh.body, files: fresh.files });
+    } catch (error) {
+      console.warn(`Agent Skills: could not read ${skill.folder}`, error);
+      return skill;
+    }
+  };
+  /** `refresh`, but never holding up a turn for long. */
+  const refreshQuickly = (pubkey, skill) =>
+    Promise.race([
+      refresh(pubkey, skill),
+      new Promise((resolve) => setTimeout(() => resolve(skill), 4000)),
+    ]);
+
   // ---- Tool: every agent type can list and load its own skills. ----------
   agents.addTool({
     name: TOOL,
     description:
-      'Your skills: reusable instructions your owner attached to you in Buzz. Use action "list" to see each skill\'s name and description at the start of a task, and action "load" with a skill name to get its full instructions, then follow them. A message containing "/skill-name" asks you to load and use that skill.',
+      'Your skills: reusable instructions your owner attached to you in Buzz. Use action "list" to see each skill\'s name and description at the start of a task, and action "load" with a skill name to get its full instructions, then follow them. Some skills are folders with reference files: use action "read" with the skill name and a file path to read one. A message containing "/skill-name" asks you to load and use that skill.',
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["list", "load"],
-          description: '"list" your skills, or "load" one by name.',
+          enum: ["list", "load", "read"],
+          description: '"list" your skills, "load" one by name, or "read" a file from a skill\'s folder.',
         },
         name: {
           type: "string",
-          description: 'The skill to load (for action "load").',
+          description: 'The skill to load or read from (for actions "load" and "read").',
+        },
+        file: {
+          type: "string",
+          description: 'A file path inside the skill\'s folder, e.g. "references/voice.md" (for action "read").',
         },
       },
       required: ["action"],
       additionalProperties: false,
     },
     async call(client, _context, args) {
-      const skills = store
-        .list(pubkeyOf(client?.key))
-        .filter((skill) => skill.enabled !== false);
-      if (args?.action === "load") {
-        const wanted = normalName(args.name).replace(/^\//, "");
-        if (!wanted) throw new Error('Give the name of the skill to load.');
+      const pubkey = pubkeyOf(client?.key);
+      const skills = store.list(pubkey).filter((skill) => skill.enabled !== false);
+      const find = () => {
+        const wanted = normalName(args?.name).replace(/^\//, "");
+        if (!wanted) throw new Error("Give the name of the skill.");
         const skill =
           skills.find((s) => normalName(s.name) === wanted) ??
           skills.find((s) => commandOf(s.name) === commandOf(wanted)) ??
@@ -283,10 +457,36 @@ export async function apply(ctx) {
         if (!skill) {
           const names = skills.map((s) => s.name).join(", ") || "none";
           throw new Error(
-            `You have no skill named "${args.name}". Your skills: ${names}.`,
+            `You have no skill named "${args?.name}". Your skills: ${names}.`,
           );
         }
-        return `# Skill: ${skill.name}\n${skill.description ? `${skill.description}\n` : ""}\n${skill.body}`;
+        return skill;
+      };
+      if (args?.action === "load") {
+        const skill = await refresh(pubkey, find());
+        return `# Skill: ${skill.name}\n${skill.description ? `${skill.description}\n` : ""}\n${skill.body}${folderNote(skill)}`;
+      }
+      if (args?.action === "read") {
+        const skill = find();
+        if (!skill.folder)
+          throw new Error(`"${skill.name}" is a single instructions file, with no folder to read from.`);
+        const file = inFolder(args?.file, skill.folder);
+        if (!file) throw new Error("Give a file path inside the skill's folder.");
+        let bytes;
+        try {
+          bytes = await host.readFile(file, { cwd: skill.folder });
+        } catch (error) {
+          const known = (skill.files ?? []).join(", ");
+          throw new Error(
+            `Could not read ${file} from ${skill.folder}: ${error?.message ?? error}.${known ? ` Files it refers to: ${known}.` : ""}`,
+          );
+        }
+        if (bytes.subarray(0, 8000).includes(0))
+          return `${file} is a binary file (${bytes.length} bytes) at ${skill.folder}/${file}.`;
+        const text = decodeText(bytes);
+        return text.length > READ_LIMIT
+          ? `${text.slice(0, READ_LIMIT)}\n…[truncated: ${file} is ${text.length} characters]`
+          : text;
       }
       if (!skills.length)
         return "You have no skills attached. Your owner can add them in this agent's Skills settings tab.";
@@ -324,8 +524,15 @@ export async function apply(ctx) {
         id: "skills",
         harness,
         event: "UserPromptSubmit",
-        run(input, { agent, session }) {
-          const skills = store.list(pubkeyOf(agent));
+        async run(input, { agent, session }) {
+          const pubkey = pubkeyOf(agent);
+          // Linked folders that this turn includes in full are re-read first.
+          const listed = store.list(pubkey);
+          const wanted = new Set(summonedSkills(input?.prompt, listed).map((s) => s.id));
+          for (const skill of listed)
+            if (skill.folder && skill.enabled !== false && (skill.mode === "always" || wanted.has(skill.id)))
+              await refreshQuickly(pubkey, skill);
+          const skills = store.list(pubkey);
           const text = skillContext(skills);
           const key = `${harness}|${session}`;
           const print = fingerprint(text);
@@ -366,7 +573,7 @@ export async function apply(ctx) {
   agents.registerTab({
     id: "skills",
     title: "Skills",
-    component: createSkillsTab(React, store, agents, host),
+    component: createSkillsTab(React, store, agents, host, refresh),
   });
 }
 
@@ -450,7 +657,7 @@ function createSlashMenu(React, store, agents) {
   };
 }
 
-function createSkillsTab(React, store, agents, host) {
+function createSkillsTab(React, store, agents, host, refresh) {
   const h = React.createElement;
   const { useState, useSyncExternalStore } = React;
 
@@ -555,6 +762,7 @@ function createSkillsTab(React, store, agents, host) {
     const [saving, setSaving] = useState(false);
     const set = (field) => (event) =>
       setDraft((d) => ({ ...d, [field]: event.target.value }));
+    const linked = Boolean(draft.folder);
     const save = async () => {
       setError("");
       if (!draft.name.trim()) return setError("Give the skill a name.");
@@ -592,13 +800,24 @@ function createSkillsTab(React, store, agents, host) {
           onChange: set("description"),
         }),
       ),
+      linked
+        ? h(
+            "p",
+            { style: { ...styles.desc, marginTop: 0 } },
+            `Linked to ${draft.folder}. The instructions come from its ${draft.entry || "SKILL.md"} and stay in sync: edit the file there, not here. `,
+            (draft.files ?? []).length
+              ? `The agent can read ${draft.files.length} reference file${draft.files.length === 1 ? "" : "s"}: ${draft.files.join(", ")}.`
+              : "No reference files were found in its instructions; the agent can still read any file in the folder by path.",
+          )
+        : null,
       h(
         "label",
         { style: styles.field },
-        "Instructions (Markdown)",
+        linked ? "Instructions (from the folder, read-only)" : "Instructions (Markdown)",
         h("textarea", {
-          style: { ...styles.input, ...styles.textarea },
+          style: { ...styles.input, ...styles.textarea, ...(linked ? { opacity: 0.75 } : {}) },
           value: draft.body,
+          readOnly: linked,
           placeholder: "Step-by-step instructions the agent follows when it uses this skill",
           onChange: set("body"),
         }),
@@ -626,23 +845,37 @@ function createSkillsTab(React, store, agents, host) {
 
   function Importer({ onImport, onCancel }) {
     const [path, setPath] = useState("");
+    const [link, setLink] = useState(true);
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
+    const isFile = /\.(md|markdown|txt)$/i.test(path.trim());
+    const isSkillFile = /(^|[\\/])SKILL\.md$/i.test(path.trim());
+    // A folder, or a SKILL.md inside one, can be linked; a loose .md cannot.
+    const canLink = !isFile || isSkillFile;
     const run = async () => {
       setError("");
       let file = path.trim();
       if (!file) return setError("Enter the path to a SKILL.md file or skill folder.");
-      if (!/\.(md|markdown|txt)$/i.test(file)) file = `${file.replace(/\/+$/, "")}/SKILL.md`;
+      if (!isFile) file = `${file.replace(/[\\/]+$/, "")}/SKILL.md`;
       if (typeof host?.readFile !== "function")
         return setError("This Buzz version can't read files for plugins.");
       setBusy(true);
       try {
         const bytes = await host.readFile(file);
         const text = new TextDecoder().decode(bytes);
-        const folder = file.split("/").slice(-2, -1)[0] ?? "";
-        const parsed = parseSkillFile(text, folder);
+        const parts = file.split(/[\\/]/);
+        const entry = parts.pop();
+        const folderPath = parts.join("/");
+        const parsed = parseSkillFile(text, parts[parts.length - 1] ?? "");
         if (!parsed.body) throw new Error("That file has no instructions.");
-        await onImport(parsed);
+        if (link && canLink) {
+          if (typeof host.resolveDirectory !== "function")
+            throw new Error("This Buzz version can't link folders; turn off linking to copy the instructions only.");
+          // The file was just read, so the folder exists and is not created.
+          const folder = await host.resolveDirectory(folderPath);
+          const found = await readSkillFolder(host, folder, entry);
+          await onImport({ ...parsed, body: found.body, folder, entry, files: found.files });
+        } else await onImport(parsed);
       } catch (e) {
         const message = e?.message ?? String(e);
         setError(/No such file/i.test(message) ? `No file at ${file}` : message);
@@ -665,9 +898,31 @@ function createSkillsTab(React, store, agents, host) {
         }),
       ),
       h(
+        "label",
+        {
+          style: {
+            ...styles.field,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: "var(--space-2, 8px)",
+            fontWeight: 400,
+            opacity: canLink ? 1 : 0.6,
+          },
+        },
+        h("input", {
+          type: "checkbox",
+          checked: link && canLink,
+          disabled: !canLink,
+          onChange: (event) => setLink(event.target.checked),
+        }),
+        "Link the whole folder (recommended for skills with reference files)",
+      ),
+      h(
         "p",
         { style: { ...styles.desc, marginTop: 0 } },
-        "Reads the name and description from the file's frontmatter. Only the SKILL.md text is copied; files next to it are not.",
+        link && canLink
+          ? "Reads the name and description from SKILL.md's frontmatter. The skill stays linked to the folder: changes to SKILL.md show up on the next use, and the agent can read the files it refers to, such as references/…"
+          : "Reads the name and description from the file's frontmatter. Only the file's text is copied; files next to it are not.",
       ),
       error ? h("p", { role: "alert", style: styles.error }, error) : null,
       h(
@@ -730,6 +985,19 @@ function createSkillsTab(React, store, agents, host) {
     };
     const toggle = (skill) =>
       store.save(pubkey, { ...skill, enabled: skill.enabled === false });
+    const resync = async (skill) => {
+      setStatus(`Reading ${skill.folder}…`);
+      try {
+        const fresh = await readSkillFolder(host, skill.folder, skill.entry);
+        if (!fresh.body) throw new Error(`${skill.entry || "SKILL.md"} has no instructions`);
+        await store.save(pubkey, { ...skill, body: fresh.body, files: fresh.files });
+        setStatus(
+          `Refreshed "${skill.name}": ${fresh.files.length} reference file${fresh.files.length === 1 ? "" : "s"}.`,
+        );
+      } catch (e) {
+        setStatus(`Couldn't read "${skill.name}" from ${skill.folder}: ${e?.message ?? e}`);
+      }
+    };
     const remove = async (skill) => {
       if (!globalThis.confirm?.(`Delete the skill "${skill.name}" from ${agent.name}?`)) return;
       await store.remove(pubkey, skill.id);
@@ -766,7 +1034,7 @@ function createSkillsTab(React, store, agents, host) {
         "div",
         { style: styles.toolbar },
         h(Button, { primary: true, onClick: () => { setStatus(""); setMode("new"); } }, "New skill"),
-        h(Button, { onClick: () => { setStatus(""); setMode("import"); } }, "Import SKILL.md"),
+        h(Button, { onClick: () => { setStatus(""); setMode("import"); } }, "Import skill"),
       ),
       status ? h("p", { role: "status", style: styles.desc }, status) : null,
       skills.length
@@ -788,14 +1056,25 @@ function createSkillsTab(React, store, agents, host) {
                       { style: styles.name },
                       skill.name,
                       skill.mode === "always" ? h("span", { style: styles.badge }, "Always on") : null,
+                      skill.folder
+                        ? h(
+                            "span",
+                            { style: styles.badge, title: skill.folder },
+                            `Folder · ${(skill.files ?? []).length} file${(skill.files ?? []).length === 1 ? "" : "s"}`,
+                          )
+                        : null,
                       skill.enabled === false ? h("span", { style: styles.badge }, "Off") : null,
                     ),
                     skill.description ? h("p", { style: styles.desc }, skill.description) : null,
+                    skill.folder
+                      ? h("p", { style: { ...styles.desc, wordBreak: "break-all" } }, skill.folder)
+                      : null,
                   ),
                   h(
                     "div",
                     { style: styles.actions },
                     h(Button, { onClick: () => setMode({ edit: skill.id }) }, "Edit"),
+                    skill.folder ? h(Button, { onClick: () => resync(skill) }, "Refresh") : null,
                     h(Button, { onClick: () => toggle(skill) }, skill.enabled === false ? "Turn on" : "Turn off"),
                     h(Button, { onClick: () => setCopying(copying === skill.id ? null : skill.id) }, "Copy to…"),
                     h(Button, { onClick: () => remove(skill) }, "Delete"),
