@@ -1,0 +1,102 @@
+{
+  "id": "lucas.agent-cards",
+  "name": "Agent Cards",
+  "apiVersion": 1,
+  "description": "Agents ask you questions, approvals and app connections as cards with buttons. Tokens you connect stay in your system keychain; agents never see them.",
+  "discovery": {
+    "category": "developer-tools-and-integrations",
+    "tags": [
+      "Agents",
+      "Approvals",
+      "Questions"
+    ]
+  },
+  "host": {
+    "agentHooks": [
+      "buzz.claude-code/claude-code",
+      "buzz.codex/codex"
+    ],
+    "commands": [
+      {
+        "id": "keychain-linux-read",
+        "program": "secret-tool",
+        "args": [
+          "lookup",
+          "service",
+          "buzz-agent-cards",
+          "account",
+          "connections"
+        ],
+        "maxOutputBytes": 65536
+      },
+      {
+        "id": "keychain-linux-write",
+        "program": "secret-tool",
+        "args": [
+          "store",
+          "--label",
+          "Buzz Agent Cards connections",
+          "service",
+          "buzz-agent-cards",
+          "account",
+          "connections"
+        ],
+        "maxInputBytes": 65536
+      },
+      {
+        "id": "keychain-mac-read",
+        "program": "security",
+        "args": [
+          "find-generic-password",
+          "-s",
+          "buzz-agent-cards",
+          "-a",
+          "connections",
+          "-w"
+        ],
+        "maxOutputBytes": 65536
+      },
+      {
+        "id": "keychain-mac-write",
+        "program": "security",
+        "args": [
+          "-i"
+        ],
+        "maxInputBytes": 65536
+      },
+      {
+        "id": "keychain-windows-read",
+        "program": "powershell",
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "[void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]; $v=New-Object Windows.Security.Credentials.PasswordVault; try { $c=$v.Retrieve('buzz-agent-cards','connections'); $c.RetrievePassword(); [Console]::Out.Write($c.Password) } catch { exit 1 }"
+        ],
+        "maxOutputBytes": 65536
+      },
+      {
+        "id": "keychain-windows-write",
+        "program": "powershell",
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "[void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]; $v=New-Object Windows.Security.Credentials.PasswordVault; $p=[Console]::In.ReadToEnd().Trim(); $n=New-Object Windows.Security.Credentials.PasswordCredential('buzz-agent-cards','connections',$p); try { $v.Add($n) } catch { $o=$v.Retrieve('buzz-agent-cards','connections'); $v.Remove($o); try { $v.Add($n) } catch { $v.Add($o); exit 1 } }"
+        ],
+        "maxInputBytes": 65536
+      }
+    ],
+    "networkOrigins": [
+      "https://api.github.com",
+      "https://api.notion.com",
+      "https://app.asana.com",
+      "https://api.linear.app",
+      "https://slack.com",
+      "https://api.airtable.com",
+      "https://api.stripe.com",
+      "https://a.klaviyo.com",
+      "https://api.hubapi.com"
+    ]
+  }
+}
