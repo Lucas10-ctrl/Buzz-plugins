@@ -1,0 +1,29 @@
+{
+  "id": "opencode.connector",
+  "name": "OpenCode connector",
+  "apiVersion": 1,
+  "description": "Run OpenCode on this computer as a Buzz agent, on any model OpenCode knows, including your local Lemonade models.",
+  "discovery": {
+    "category": "agents",
+    "tags": ["OpenCode", "coding-agents", "Lemonade"]
+  },
+  "host": {
+    "processes": [
+      { "id": "opencode", "program": "opencode" }
+    ],
+    "commands": [
+      {
+        "id": "models",
+        "program": "bash",
+        "args": ["-c", "opencode models 2>/dev/null"],
+        "maxOutputBytes": 65536
+      },
+      {
+        "id": "home",
+        "program": "bash",
+        "args": ["-c", "printf %s \"$HOME\""],
+        "maxOutputBytes": 4096
+      }
+    ]
+  }
+}
