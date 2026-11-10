@@ -372,7 +372,10 @@ function createViews(React, loadModels) {
     const saved = modelOf(agent.config);
     const [draft, setDraft] = React.useState(saved);
     const [status, setStatus] = React.useState("");
-    const dirty = draft !== saved;
+    const changed = draft !== saved;
+    // Switching an existing agent to this type is held by Buzz until this tab
+    // saves, so Save must work then even if the model is left as it is.
+    const dirty = changed || Boolean(settingsHost?.pendingSave);
     const onSave = async () => {
       setStatus("Saving…");
       try {
@@ -385,7 +388,7 @@ function createViews(React, loadModels) {
     return h(
       "div",
       { style: { display: "flex", flexDirection: "column", gap: 14, padding: "4px 0" } },
-      settingsHost?.typeControl ? settingsHost.typeControl(dirty) : null,
+      settingsHost?.typeControl ? settingsHost.typeControl(changed) : null,
       h(ModelField, { value: draft, onChange: setDraft, disabled: false, models }),
       h(
         "div",
