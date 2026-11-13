@@ -17,7 +17,15 @@ continuing Hermes session.
 ## Notes
 
 - Needs `hermes` on your PATH (`~/.local/bin/hermes`), with ACP support (`hermes acp --check`).
-- Only answers its owner's messages, because it runs with your access to this computer.
+- Only answers its owner's messages, because it runs with your access to this computer,
+  and handoffs from the owner's other agents (checked by the owner's signed
+  attestation on their messages).
+- **Agents taking turns:** tag only the first agent and say the order, e.g.
+  "@Copywriter write it, then Reviewer checks it". When an agent writes `@Name`
+  of another of your agents in its reply, that agent is tagged and starts next,
+  with the earlier replies in front of it. After 8 agent-to-agent handoffs in a
+  row in one conversation, agents stop answering each other until you post again.
+  Tagging several agents in one message still starts them all at once.
 - Hermes's permission prompts are approved once per request automatically.
 - Pictures and files in your message are downloaded through Buzz (they need your sign-in).
   Hermes sees pictures directly and gets each file's local path.
@@ -25,7 +33,7 @@ continuing Hermes session.
 
 ## Changing the plugin
 
-Edit `src/main.js` or `acp.js`, then run `node build.mjs` to rebuild `plugin.js`.
+Edit `src/main.js`, `acp.js` or `nostr.js`, then run `node build.mjs` to rebuild `plugin.js`.
 `node test/smoke.mjs copywriter` checks Hermes answers over ACP;
 `node test/plugin.mjs copywriter` runs real turns through the built plugin;
 `node test/image.mjs <picture.png> copywriter` checks Hermes sees an attached picture.

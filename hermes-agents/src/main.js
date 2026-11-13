@@ -2,6 +2,7 @@
 // profiles on this computer. Each agent runs `hermes -p <profile> acp`; each
 // conversation it is in (a thread, a DM or a Solo chat) is one ACP session.
 import { AcpConnection, Turn } from "../acp.js";
+import { attestedOwner, npub } from "../nostr.js";
 
 export const inject = ["react", "agents", "host"];
 
@@ -9,6 +10,10 @@ const TYPE_ID = "hermes";
 const PROFILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const START_MS = 90_000;
 const HEX64 = /^[0-9a-f]{64}$/;
+// Agent-to-agent turns allowed in one conversation before the owner speaks
+// again, so two agents can't keep waking each other.
+const MAX_HANDOFFS = 8;
+const ROSTER_MS = 60_000;
 
 export function apply(ctx) {
   const { agents, host } = ctx;
@@ -66,6 +71,9 @@ class Runtime {
     this.host = host;
     this.workers = new Map(); // agent key -> Worker
     this.channelKinds = new Map(); // channel id -> Promise<"flat" | "threads">
+    this.handoffs = new Map(); // conversation -> agent-to-agent turns since the owner spoke
+    this.seen = new Map(); // agent key + conversation -> newest message it was given
+    this.rosters = new Map(); // owner -> { at, promise: Map<pubkey, name> }
   }
 
   dispose() {
@@ -86,51 +94,108 @@ class Runtime {
     return worker;
   }
 
-  run(delivery) {
+  async run(delivery) {
     const { trigger, agent } = delivery;
     if (trigger.type !== "mention") return void delivery.ignored?.();
     const event = trigger.event;
-    // Only the owner's own messages: the agent works with the owner's access.
-    if (!event || event.pubkey !== agent.owner) return void delivery.ignored?.();
+    if (!event || event.pubkey === agent.pubkey) return void delivery.ignored?.();
     const channel = delivery.channelId ?? tagValue(event, "h");
     if (!channel) return void delivery.ignored?.();
+    // The owner's messages, or a handoff from another of the owner's agents
+    // (its owner attestation checked): the agent works with the owner's access.
+    let from = null;
+    let flat = false;
+    try {
+      if (event.pubkey !== agent.owner) {
+        if ((await attestedOwner(event)) !== agent.owner) return void delivery.ignored?.();
+        from = (await this.roster(agent)).get(event.pubkey) || (await profileName(agent, event.pubkey)) || "another agent";
+      }
+      flat = (await this.channelKind(agent, channel)) === "flat";
+    } catch {
+      return void delivery.ignored?.();
+    }
+    const root = flat ? null : rootOf(event);
+    const place = flat ? channel : `${channel}/${root}`;
+    if (from) {
+      const count = this.handoffs.get(place) ?? 0;
+      if (count >= MAX_HANDOFFS) return void delivery.ignored?.();
+      this.handoffs.set(place, count + 1);
+    } else this.handoffs.delete(place);
     const profile = profileOf(delivery.config);
     delivery.acknowledged?.();
 
-    const done = this.turn(delivery, { event, agent, channel, profile }).then(
+    const done = this.turn(delivery, { event, agent, channel, profile, root, place, from }).then(
       () => ({ ok: true }),
       async (error) => {
         const message = String(error?.message ?? error).slice(0, 500);
-        const flat = (await this.channelKind(agent, channel)) === "flat";
-        await reply(agent, channel, flat ? null : rootOf(event), `⚠️ Hermes couldn't answer: ${message}`).catch(() => {});
+        // Tags nobody: an error must not wake another agent.
+        await reply(agent, channel, root, `⚠️ Hermes couldn't answer: ${message}`).catch(() => {});
         return { ok: false, error: message };
       },
     );
     delivery.workingUntil(done);
   }
 
-  async turn(delivery, { event, agent, channel, profile }) {
-    const flat = (await this.channelKind(agent, channel)) === "flat";
-    const root = flat ? null : rootOf(event);
-    const place = flat ? channel : `${channel}/${root}`;
+  async turn(delivery, { event, agent, channel, profile, root, place, from }) {
     const worker = this.worker(agent.key, profile);
     const { sessionId, fresh } = await worker.session(place);
     delivery.interruptible?.(() => worker.cancel(sessionId));
+    const roster = await this.roster(agent);
+    const others = [...roster].filter(([key]) => key !== agent.pubkey).map(([, name]) => name);
+    const seenKey = `${agent.key}|${place}`;
 
     let text = "";
     if (fresh) {
-      text += intro(agent.name);
-      const history = await recentMessages(agent, channel, root, event).catch(() => []);
+      text += intro(agent.name, others);
+      const history = await recentMessages(agent, channel, root, event, roster, 0).catch(() => []);
       if (history.length) text += `\n\nEarlier in this conversation:\n${history.join("\n")}`;
       text += "\n\n";
+    } else {
+      // Messages posted since its last turn, such as other agents' replies.
+      const since = this.seen.get(seenKey) ?? 0;
+      const history = since ? await recentMessages(agent, channel, root, event, roster, since).catch(() => []) : [];
+      if (history.length) text += `Since your last reply:\n${history.join("\n")}\n\n`;
     }
-    text += `New message from your owner:\n${messageText(event.content)}`;
+    this.seen.set(seenKey, Math.max(this.seen.get(seenKey) ?? 0, event.created_at ?? 0));
+    text += from
+      ? `New message from ${from}, another of your owner's agents, handing work to you:\n${messageText(event.content)}` +
+        "\n\n(Do your part. If the plan names another agent to go after you, @mention that agent by name in your reply; otherwise don't @mention anyone.)"
+      : `New message from your owner:\n${messageText(event.content)}`;
 
     const { notes, images } = await attachmentsOf(agent, event);
     if (notes.length) text += `\n\nAttached to this message:\n${notes.join("\n")}`;
 
-    const answer = await worker.prompt(sessionId, text, (step) => delivery.step?.(step), images);
-    if (answer.trim()) await reply(agent, channel, flat ? null : root, answer.trim());
+    const answer = (await worker.prompt(sessionId, text, (step) => delivery.step?.(step), images)).trim();
+    if (!answer) return;
+    const { content, mentions } = withMentions(answer, roster, agent.pubkey);
+    const posted = await reply(agent, channel, root, content, mentions);
+    if (posted?.created_at) this.seen.set(seenKey, Math.max(this.seen.get(seenKey) ?? 0, posted.created_at));
+  }
+
+  /** The owner's agents in this community, by pubkey, from the owner's own
+   * agent list (kind 30177). Empty when the community doesn't share it. */
+  roster(agent) {
+    const cached = this.rosters.get(agent.owner);
+    if (cached && Date.now() - cached.at < ROSTER_MS) return cached.promise;
+    const promise = agent
+      .query([{ kinds: [30177], authors: [agent.owner], limit: 200 }])
+      .then((events) => {
+        const names = new Map();
+        for (const e of events) {
+          const key = tagValue(e, "d");
+          if (e.pubkey !== agent.owner || !HEX64.test(key ?? "")) continue;
+          let name = "";
+          try {
+            name = String(JSON.parse(e.content)?.name ?? "").trim();
+          } catch {}
+          if (name) names.set(key, name);
+        }
+        if (agent.name) names.set(agent.pubkey, agent.name);
+        return names;
+      })
+      .catch(() => new Map(agent.name ? [[agent.pubkey, agent.name]] : []));
+    this.rosters.set(agent.owner, { at: Date.now(), promise });
+    return promise;
   }
 
   /** DMs and Solo chats are answered at the top level; channels in the thread. */
@@ -235,10 +300,15 @@ class Worker {
 
 // ── Messages ────────────────────────────────────────────────────────────────
 
-const intro = (name) =>
+const intro = (name, others = []) =>
   `You are ${name}, running as an agent in Buzz, your owner's team chat. ` +
   "Your final reply is posted into this Buzz conversation for you, so write it as a chat message " +
-  "(Markdown is fine) and don't say that you will post it. Keep it as short as the request allows.";
+  "(Markdown is fine) and don't say that you will post it. Keep it as short as the request allows." +
+  (others.length
+    ? `\n\nYour owner's other agents here: ${others.join(", ")}. Writing @ and an agent's exact name in your reply ` +
+      "(for example @" + others[0] + ") wakes that agent in this conversation. Do that only to hand the work on, " +
+      "for example when your owner set an order and you are not last. Don't @mention an agent just to talk about it."
+    : "");
 
 const MENTION_LINK = /\[(?:\\.|[^\]\\])*\]\(nostr:(?:npub|nprofile|note|nevent)1[a-z0-9]+\)/g;
 const MENTION_BARE = /nostr:(?:npub|nprofile|note|nevent)1[a-z0-9]+/g;
@@ -326,7 +396,7 @@ function rootOf(event) {
   return (root && reply ? root : reply ?? root)?.[1] ?? event.id;
 }
 
-async function recentMessages(agent, channel, root, current) {
+async function recentMessages(agent, channel, root, current, roster = new Map(), since = 0) {
   const filters =
     root && root !== current.id
       ? [{ ids: [root] }, { kinds: [9], "#e": [root], limit: 30 }]
@@ -338,17 +408,69 @@ async function recentMessages(agent, channel, root, current) {
   const seen = new Set();
   return events
     .filter((e) => e.id !== current.id && !seen.has(e.id) && seen.add(e.id))
+    .filter((e) => !since || (e.created_at > since && e.pubkey !== agent.pubkey))
     .sort((a, b) => a.created_at - b.created_at)
     .slice(-30)
     .map((e) => {
-      const who = e.pubkey === agent.pubkey ? "You" : e.pubkey === agent.owner ? "Owner" : `Member ${e.pubkey.slice(0, 8)}`;
+      const who =
+        e.pubkey === agent.pubkey
+          ? "You"
+          : e.pubkey === agent.owner
+            ? "Owner"
+            : roster.get(e.pubkey)
+              ? `${roster.get(e.pubkey)} (agent)`
+              : `Member ${e.pubkey.slice(0, 8)}`;
       return `${who}: ${messageText(e.content).slice(0, 2000)}`;
     });
 }
 
-function reply(agent, channel, root, content) {
+/** `@Name` of the owner's other agents, in prose (not code), as Buzz mention
+ * links; their pubkeys tag the reply so Buzz wakes them. */
+function withMentions(text, roster, self) {
+  const names = [...roster].filter(([key, name]) => key !== self && name);
+  if (!names.length || !text.includes("@")) return { content: text, mentions: [] };
+  // Code is blanked to the same length so positions still match the text.
+  const prose = text
+    .replace(/^```[\s\S]*?^```/gm, (m) => " ".repeat(m.length))
+    .replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length))
+    .replace(/\[[^\]\n]*\]\([^)\n]*\)/g, (m) => " ".repeat(m.length));
+  const byName = new Map();
+  for (const [key, name] of names) {
+    const lower = name.toLowerCase();
+    byName.set(lower, [...(byName.get(lower) ?? []), key]);
+  }
+  const longest = [...byName.keys()].sort((a, b) => b.length - a.length);
+  const found = [];
+  for (const match of prose.matchAll(/(^|[\s(*_])@/g)) {
+    const at = match.index + match[0].length - 1;
+    const rest = prose.slice(at + 1).toLowerCase();
+    const name = longest.find((n) => rest.startsWith(n) && /^($|[\s,;.!?:)\]}*_'’])/.test(rest.slice(n.length)));
+    const keys = name ? byName.get(name) : [];
+    if (keys?.length === 1) found.push({ at, length: name.length + 1, key: keys[0] });
+  }
+  let content = text;
+  for (const { at, length, key } of [...found].reverse()) {
+    const display = content.slice(at, at + length);
+    content = `${content.slice(0, at)}[${display}](nostr:${npub(key)})${content.slice(at + length)}`;
+  }
+  return { content, mentions: [...new Set(found.map((f) => f.key))] };
+}
+
+/** A profile's display name, if the community has it. */
+async function profileName(agent, pubkey) {
+  const [profile] = await agent.query([{ kinds: [0], authors: [pubkey], limit: 1 }]).catch(() => []);
+  try {
+    const meta = JSON.parse(profile?.content ?? "{}");
+    return String(meta.display_name || meta.name || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function reply(agent, channel, root, content, mentions = []) {
   const tags = [["h", channel]];
   if (root) tags.push(["e", root, "", "reply"]);
+  for (const key of mentions) tags.push(["p", key]);
   return agent.publish({ kind: 9, content, tags });
 }
 
