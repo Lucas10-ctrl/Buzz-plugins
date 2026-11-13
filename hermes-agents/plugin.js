@@ -126,7 +126,10 @@ class Runtime {
     }
     text += `New message from your owner:\n${messageText(event.content)}`;
 
-    const answer = await worker.prompt(sessionId, text, (step) => delivery.step?.(step));
+    const { notes, images } = await attachmentsOf(agent, event);
+    if (notes.length) text += `\n\nAttached to this message:\n${notes.join("\n")}`;
+
+    const answer = await worker.prompt(sessionId, text, (step) => delivery.step?.(step), images);
     if (answer.trim()) await reply(agent, channel, flat ? null : root, answer.trim());
   }
 
@@ -201,7 +204,7 @@ class Worker {
   }
 
   /** Runs one prompt after any earlier one in the same session. */
-  prompt(sessionId, text, onStep) {
+  prompt(sessionId, text, onStep, extra = []) {
     const previous = this.queues.get(sessionId) ?? Promise.resolve();
     const next = previous
       .catch(() => {})
@@ -209,7 +212,7 @@ class Worker {
         const turn = new Turn({ onStep });
         this.turns.set(sessionId, turn);
         try {
-          const result = await this.acp.prompt(sessionId, text);
+          const result = await this.acp.prompt(sessionId, text, extra);
           if (result?.stopReason === "cancelled") return "";
           return turn.text;
         } finally {
@@ -244,6 +247,72 @@ const messageText = (content) =>
     .replace(MENTION_LINK, (link) => link.replace(/\]\(.*$/, "").replace(/^\[/, ""))
     .replace(MENTION_BARE, "")
     .trim();
+
+// ── Attachments ──
+// Buzz media URLs need the agent's sign-in, so Hermes can't open them itself.
+// Buzz saves each one to a local file for the agent; images also go to Hermes
+// as ACP image blocks so the model sees them, and every file's path is listed.
+
+const MAX_ATTACHMENTS = 8;
+const MAX_IMAGE_BASE64 = 7_000_000; // about 5 MB of image
+const MEDIA_URL = /https?:\/\/[^\s)<>"']+\/media\/[0-9a-f]{64}(?:\.[A-Za-z0-9]+)?/g;
+
+/** The Buzz media URLs in a message: its `imeta` tags, then links in its text. */
+function mediaUrlsOf(event) {
+  const urls = [];
+  for (const tag of event?.tags ?? []) {
+    if (tag[0] !== "imeta") continue;
+    for (const field of tag.slice(1)) {
+      const value = String(field);
+      if (value.startsWith("url ")) urls.push(value.slice(4).trim());
+    }
+  }
+  urls.push(...(String(event?.content ?? "").match(MEDIA_URL) ?? []));
+  return [...new Set(urls)].slice(0, MAX_ATTACHMENTS);
+}
+
+async function attachmentsOf(agent, event) {
+  const notes = [];
+  const images = [];
+  const urls = mediaUrlsOf(event);
+  if (!urls.length) return { notes, images };
+  if (typeof agent.media !== "function") {
+    notes.push("- (This Buzz can't download attachments for agents, so they could not be opened.)");
+    return { notes, images };
+  }
+  for (const url of urls) {
+    const name = url.split("/").pop();
+    try {
+      const media = await agent.media(url);
+      const type = String(media?.type ?? "");
+      notes.push(`- ${name}: saved at ${media.path} (${type || "unknown type"}, ${media.size} bytes)`);
+      // Buzz includes `data` only for files the agent can be shown. Like Buzz's
+      // own media tool, trust the file's first bytes for its image type.
+      const image = media.data ? sniffImage(media.data) : undefined;
+      if (image && media.data.length <= MAX_IMAGE_BASE64)
+        images.push({ type: "image", mimeType: image, data: media.data });
+    } catch (error) {
+      notes.push(`- ${name}: could not be downloaded (${String(error?.message ?? error).slice(0, 200)})`);
+    }
+  }
+  return { notes, images };
+}
+
+/** An image's MIME type from the start of its base64 data, or undefined. */
+function sniffImage(base64) {
+  let head;
+  try {
+    head = atob(String(base64).slice(0, 16));
+  } catch {
+    return undefined;
+  }
+  const at = (offset, ...bytes) => bytes.every((b, i) => head.charCodeAt(offset + i) === b);
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (at(0, 0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  if (at(0, 0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  return undefined;
+}
 
 function tagValue(event, name) {
   return event?.tags?.find((t) => t[0] === name)?.[1];
@@ -530,10 +599,11 @@ class AcpConnection {
     return result.sessionId;
   }
 
-  prompt(sessionId, text) {
+  /** `extra` is more ACP content blocks after the text, such as images. */
+  prompt(sessionId, text, extra = []) {
     return this.request("session/prompt", {
       sessionId,
-      prompt: [{ type: "text", text }],
+      prompt: [{ type: "text", text }, ...extra],
     });
   }
 
