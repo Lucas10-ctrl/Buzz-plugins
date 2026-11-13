@@ -19,10 +19,13 @@ continuing Hermes session.
 - Needs `hermes` on your PATH (`~/.local/bin/hermes`), with ACP support (`hermes acp --check`).
 - Only answers its owner's messages, because it runs with your access to this computer.
 - Hermes's permission prompts are approved once per request automatically.
+- Pictures and files in your message are downloaded through Buzz (they need your sign-in).
+  Hermes sees pictures directly and gets each file's local path.
 - Hermes posts its final answer; it doesn't use Buzz's own tools (reactions, canvases) yet.
 
 ## Changing the plugin
 
 Edit `src/main.js` or `acp.js`, then run `node build.mjs` to rebuild `plugin.js`.
 `node test/smoke.mjs copywriter` checks Hermes answers over ACP;
-`node test/plugin.mjs copywriter` runs real turns through the built plugin.
+`node test/plugin.mjs copywriter` runs real turns through the built plugin;
+`node test/image.mjs <picture.png> copywriter` checks Hermes sees an attached picture.

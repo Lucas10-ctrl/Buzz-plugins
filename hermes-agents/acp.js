@@ -125,10 +125,11 @@ export class AcpConnection {
     return result.sessionId;
   }
 
-  prompt(sessionId, text) {
+  /** `extra` is more ACP content blocks after the text, such as images. */
+  prompt(sessionId, text, extra = []) {
     return this.request("session/prompt", {
       sessionId,
-      prompt: [{ type: "text", text }],
+      prompt: [{ type: "text", text }, ...extra],
     });
   }
 
