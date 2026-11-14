@@ -1,0 +1,22 @@
+{
+  "id": "lucas.inline-diffs",
+  "name": "Inline Diffs",
+  "apiVersion": 1,
+  "description": "A Changeset card under your agent's reply lists every file it changed in that turn. Open a file to see its changes beside the chat and ask the agent about a line. Only you see it.",
+  "discovery": {
+    "category": "developer-tools-and-integrations",
+    "tags": [
+      "Agents",
+      "Diffs",
+      "Code review"
+    ]
+  },
+  "host": {
+    "agentHooks": [
+      "buzz.claude-code/claude-code",
+      "buzz.codex/codex",
+      "buzz.pi/pi"
+    ],
+    "files": true
+  }
+}
