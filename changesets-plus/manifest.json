@@ -1,0 +1,13 @@
+{
+  "id": "lucas.changesets-plus",
+  "name": "Changesets Plus",
+  "apiVersion": 1,
+  "description": "Buzz's Changesets with more: one column or side by side, a file filter, pictures before and after, a Settings page, and asking the agent about a line.",
+  "discovery": {
+    "category": "developer-tools-and-integrations",
+    "tags": ["code", "coding-agents", "diffs"]
+  },
+  "host": {
+    "processes": [{ "id": "git", "program": "git" }]
+  }
+}

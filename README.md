@@ -9,6 +9,7 @@ Buzz is great for multi-agent coordination and project management. Here's some p
 | [page-builder](page-builder) | Claude design, but on steroids: website clones, pre-made section library, true drag and drop editor, and fully agentic abilities, plus various export options.|
 | [all-editors](all-editors) | Docs, Canvas and Page Builder together in one install. |
 | [agent-skills](agent-skills) | Gives each agent its own skills with slash commands: reusable instructions it loads when a task matches. Isolated in buzz. |
+| [changesets-plus](changesets-plus) | Buzz's Changesets with more: one column or side by side, a file filter, pictures before and after, a Settings page, and asking the agent about a line. |
 | [hermes-agents](hermes-agents) | Assign hermes profiles for your Buzz agents, each with its own hermes skills, model, and memory managed by your Hermes setup. Not just running on hermes, but individual profiles. |
 | [opencode-connector](opencode-connector) | Run OpenCode as a Buzz agent on any model it knows, including local models through Lemonade. Each thread is one continuing OpenCode session. |
 
@@ -18,7 +19,7 @@ Buzz is great for multi-agent coordination and project management. Here's some p
 
 Works on macOS (Apple Silicon and Intel), Linux x64 and Windows x64.
 
-**agent-skills, hermes-agents, opencode-connector:** download or clone this repo, then in Buzz choose **Settings → Plugins → Manage plugins → Load from folder** and pick the plugin's folder.
+**agent-skills, changesets-plus, hermes-agents, opencode-connector:** download or clone this repo, then in Buzz choose **Settings → Plugins → Manage plugins → Load from folder** and pick the plugin's folder.
 
 ## For AI assistants
 
