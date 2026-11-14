@@ -475,6 +475,8 @@ export function useEditorConversation(
     openBrandSettings,
     agent,
     workspaceId,
+    /** Switch every editor to one of the owner's Solo workspaces ("" is unfiled). */
+    chooseWorkspace: workspace.choose,
     send,
     content,
     stop,

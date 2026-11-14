@@ -37,6 +37,23 @@ import { createEditorText } from "./editor-locale";
 import { nativeEditorChrome } from "./editor-chrome";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
+/** The Solo project of an editor workspace in this scope; "" is unfiled, undefined is foreign. */
+function projectOf(workspaceId: string, scope: string): string | undefined {
+  if (workspaceId === scope) return "";
+  try {
+    const parsed: unknown = JSON.parse(workspaceId);
+    return Array.isArray(parsed) &&
+      parsed.length === 3 &&
+      parsed[0] === "solo" &&
+      parsed[1] === scope &&
+      typeof parsed[2] === "string" &&
+      editorWorkspaceId(scope, parsed[2]) === workspaceId
+      ? parsed[2]
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 const t: DocsAppProps["t"] = createEditorText(en);
 
 /** Original Docs library/editor/model, hosted by Buzz instead of the previous application's Session slots. */
@@ -195,6 +212,28 @@ function DocsView({
     <T,>(selector: (route: DocsRoute | null) => T): T => selector(route),
     [route],
   );
+  // A doc link from chat may point into another of the owner's workspaces: follow it.
+  const linkedProject =
+    route && route.workspaceId !== workspaceId && scope
+      ? projectOf(route.workspaceId, scope)
+      : undefined;
+  const followable =
+    linkedProject !== undefined &&
+    (linkedProject === "" ||
+      !!session.soloPreferences
+        .snapshot()
+        .data?.sections.some((item) => item.id === linkedProject));
+  const { chooseWorkspace } = conversation;
+  useEffect(() => {
+    if (followable && linkedProject !== undefined)
+      chooseWorkspace(linkedProject);
+  }, [followable, linkedProject, chooseWorkspace]);
+  if (route && route.workspaceId !== workspaceId && followable)
+    return (
+      <p role="status" className="p-panel-inset text-body text-subtle">
+        Opening document…
+      </p>
+    );
   if (route && route.workspaceId !== workspaceId)
     return (
       <div className="p-panel-inset">

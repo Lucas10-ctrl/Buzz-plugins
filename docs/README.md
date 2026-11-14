@@ -2,6 +2,14 @@
 
 A documents editor inside Buzz. Agents write first drafts, suggest edits you accept or reject, and answer comment threads.
 
+## Creating docs
+
+- **From any chat:** click **New doc** (the page-with-plus icon) in the message box, name it, then **Add to message** or **Create and open**.
+- **Ask an agent:** "@agent write a launch brief" in any chat. The agent creates the doc, drafts it and posts the link. To stop agents doing this, turn off **Settings → Agent docs → Let agents create docs**.
+- **In Docs:** the **+** above the doc list.
+
+New docs go into the Solo workspace the chat is filed in, otherwise the workspace selected in Docs. Docs are saved on this computer, so teammates on other machines can't open the links.
+
 Works on macOS (Apple Silicon and Intel), Linux x64 and Windows x64. Preview, unsigned.
 
 ## Install

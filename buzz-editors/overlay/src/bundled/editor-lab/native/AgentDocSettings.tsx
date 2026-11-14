@@ -9,7 +9,7 @@ import { useEditorWorkspace } from "./useEditorWorkspace";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
 
-/** The owner's switch for agents on this device starting docs from any chat. */
+/** On by default: agents on this device start docs when asked in any chat. */
 export function AgentDocSettings({ ctx }: { ctx: Ctx }) {
   const connection = useSyncExternalStore(
     ctx.relay.subscribe,
@@ -23,7 +23,7 @@ export function AgentDocSettings({ ctx }: { ctx: Ctx }) {
     [scope],
   );
   const read = useCallback(
-    () => readView<unknown>(scope, agentDocCreationKey, false) === true,
+    () => readView<unknown>(scope, agentDocCreationKey, true) !== false,
     [scope],
   );
   const enabled = useSyncExternalStore(subscribe, read, () => false);
@@ -31,12 +31,12 @@ export function AgentDocSettings({ ctx }: { ctx: Ctx }) {
     <>
       <Header
         title="Agent docs"
-        subtitle="Let your agents on this device start a doc when you ask in any chat. New docs go into the workspace selected in Docs and stay in this lab on this device."
+        subtitle="Your agents on this device can start a doc whenever someone asks in a chat, and post a link to it. Docs stay on this device."
       />
       <SettingsGroup>
         <SwitchPreferenceRow
           label="Let agents create docs"
-          description={`New docs go to: ${workspace.name}`}
+          description={`New docs go to the chat’s workspace, otherwise: ${workspace.name}`}
           disabled={!scope}
           checked={enabled}
           onCheckedChange={(checked) =>

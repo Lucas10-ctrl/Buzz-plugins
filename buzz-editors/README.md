@@ -48,6 +48,8 @@ git ls-files --others --exclude-standard -z | rsync -a --from0 --files-from=- ./
 
 ## Changes
 
+- 2026-11-14: anyone can start a doc from chat. The message box has a **New doc** button: name it, then add its link to the message or open it. Agents can create docs without setup (“Let agents create docs” is now on by default and can be turned off). New docs go into the Solo workspace the chat is filed in, otherwise the one selected in Docs. Doc links posted in chat are `buzz://plugin` links that open the doc and switch Docs to its workspace.
+
 - 2026-11-04: Docs looks native to Buzz. Comments sit in the right margin beside the text they discuss (the panel becomes "All comments" and the fallback on narrow windows). A document list on the left replaces the title dropdown and holds the workspace picker. The header is a breadcrumb with History, Link and Share. Highlights, cards, rows and buttons use Buzz design tokens. Buzz's extra "Docs" header row and workspace row are gone.
 
 - 2026-11-04: Docs can move a document to another Solo workspace (••• → Move to workspace…), with its history and attachments. Agents can do the same with `buzz_docs` `moveDoc` when “Let agents create docs” is on.

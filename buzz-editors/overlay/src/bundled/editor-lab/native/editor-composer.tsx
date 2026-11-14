@@ -102,6 +102,11 @@ const Owner = createContext<{
   token: symbol;
 } | null>(null);
 
+/** True inside an editor's own composer, where chat-only tools stay hidden. */
+export function useInEditorComposer(): boolean {
+  return useContext(Owner) !== null;
+}
+
 /** Mark only this editor's native composer as the destination for its original context actions. */
 export function EditorComposerOwner({
   bridge,

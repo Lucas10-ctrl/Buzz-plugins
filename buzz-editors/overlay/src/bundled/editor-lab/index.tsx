@@ -8,6 +8,7 @@ import { EditorAgentBridge } from "./native/agent-bridge";
 import { readDocNavigation } from "./native/docs-route";
 import { EditorComposerCapture } from "./native/editor-composer";
 import { carriesEditor } from "./native/editor-package";
+import { createNewDocTool } from "./native/NewDocTool";
 
 const NativeBrandSettings = lazy(() =>
   import("./native/NativeBrandSettings").then((module) => ({
@@ -73,6 +74,13 @@ export const apply: PluginModule["apply"] = (ctx) => {
           <AgentDocSettings ctx={ctx} />
         </Suspense>
       ),
+    });
+  if (carriesEditor("docs"))
+    ctx.conversation.registerTool({
+      id: "new-doc",
+      title: "New doc",
+      order: 20,
+      component: createNewDocTool(ctx, store),
     });
   ctx.conversation.registerTool({
     id: "editor-context",

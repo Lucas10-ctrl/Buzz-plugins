@@ -38,3 +38,10 @@ Repo: ~/Documents/GitHub/buzz-editor-lab/buzz-app (Editor Lab plugin, CopyOS por
 - Tests: 2 new in agent-bridge.test.mjs; editor-lab vitest 141/142 (index.test.tsx "three topbar destinations" fails before and after this change). tsc clean, biome clean on touched files.
 - Package rebuilt (`bin/node plugin-package/build.mjs`) and prepared: editor-plugins/buzz.editors/56511166ec8c99665c4200ae/frontend. Needs import in Settings → Plugins + Buzz restart.
 - Untracked lab code, no commit. Pre-change copies: ~/.buzz/.scratch/editor-lab-backup/, old package: ~/.buzz/.scratch/buzz-editors-plugin-package.bak
+
+## Made inherent (2026-11-14)
+- "Let agents create docs" is on by default (`readView(..., true) === false` refuses). The owner can still turn it off in Settings → Agent docs.
+- Target workspace: the Solo workspace the chat is filed in (`soloPreferences.assignments[channel]`), else the one selected in Docs.
+- `createDoc` returns `link` as `buzz://plugin?id=<plugin>&page=docs&route.workspaceId=…&route.docId=…` (`docChatLink`), which chat accepts and opens. `readDocNavigation` accepts that two-field form. Opening a link into another of the owner's workspaces switches Docs to it instead of showing an error.
+- People: a **New doc** composer tool (`native/NewDocTool.tsx`) creates a doc in the same workspace and inserts its link or opens it. Hidden inside Docs' own request box.
+- Tests: `NewDocTool.test.tsx` (2), `docs-route.test.ts` link round trip. Store-backed tests in agent-bridge/docs-move/docs-navigation fail in vitest before and after this change ("Missing legacy document section text", a Yjs instance mismatch in the test runner); the same store call works through the dev editor port.

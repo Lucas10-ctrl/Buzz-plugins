@@ -1,0 +1,28 @@
+@reference "../../../shared/styles/globals.css";
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-3);
+}
+.label {
+  font-weight: 600;
+}
+.hint,
+.error {
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  letter-spacing: var(--text-caption--letter-spacing);
+  color: var(--text-subtle);
+}
+.error {
+  color: var(--text-danger);
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

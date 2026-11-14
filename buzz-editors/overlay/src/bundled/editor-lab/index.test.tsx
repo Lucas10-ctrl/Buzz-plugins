@@ -24,9 +24,12 @@ it("registers three topbar workspace destinations and removes them on disable", 
   const fiber = scope.plugin(editors);
   try {
     await fiber.await();
-    expect(conversation.tools.snapshot().map((tool) => tool.id)).toEqual([
-      "editor-context",
-    ]);
+    expect(
+      conversation.tools
+        .snapshot()
+        .map((tool) => tool.id)
+        .sort(),
+    ).toEqual(["editor-context", "new-doc"]);
     expect(
       pages.snapshot().map(({ id, title, placement, layout }) => ({
         id,

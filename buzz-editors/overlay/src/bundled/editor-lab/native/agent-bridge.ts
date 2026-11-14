@@ -3,7 +3,7 @@ import type { AddedTool } from "../../../buzz-mcp/session-tools";
 import type { EditorStore } from "./pages-client";
 import { EditorComposerBridge } from "./editor-composer";
 import { canvasWebsiteGuide } from "./canvas-website";
-import { docLink } from "./docs-route";
+import { docChatLink } from "./docs-route";
 import { readView } from "../../../shared/view-state";
 import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
 import { carriesEditor } from "./editor-package";
@@ -41,13 +41,15 @@ export type EditorConversation = Readonly<{
   pageWorkflow?: Readonly<{ requestId: string }>;
   canvasCopy?: Readonly<{ designId: string }>;
 }>;
-/** View key for the owner's "Let agents create docs" setting; off unless saved as true. */
+/** View key for the owner's "Let agents create docs" setting; on unless saved as false. */
 export const agentDocCreationKey = "editor-lab:agent-doc-creation";
 /** Where an agent may start a doc without an owner's Docs request. */
 export type EditorDocCreation = Readonly<{
-  /** The editor workspace a new doc goes into; undefined refuses creation. */
+  /** The editor workspace a new doc goes into; undefined refuses creation.
+   * A chat filed in a Solo workspace keeps its docs there. */
   targetFor(
     agent: Readonly<{ key: string; pubkey: string }>,
+    channel?: string,
   ): Readonly<{ workspaceId: string; scope: string }> | undefined;
   /** The owner's Solo workspaces, and the one a chat is filed in, for moving docs. */
   workspaces?(): readonly Readonly<{ id: string; name: string }>[];
@@ -451,8 +453,8 @@ export class EditorAgentBridge {
       name: "buzz_docs",
       description:
         "Use buzz_brand readBrandContext for workspace voice, guardrails and style guidance. " +
-        "createDoc takes title,sections:[headings] (at least one) and starts a new doc in the owner's selected Docs workspace when the owner has turned on agent doc creation. It binds that doc to this conversation for drafting: follow it with writeDoc per section (blockId from its blocks, its epoch, done:true) and share the returned link. " +
-        "moveDoc takes docId and workspace (a Solo workspace name or id; omit it to use the workspace this chat is filed in) and moves a doc from the owner's selected Docs workspace, or from this conversation's doc, with its history and attachments, when agent doc creation is on. An unknown workspace name lists the available ones. " +
+        "createDoc needs no prior request: whenever someone asks for a doc, plan, brief or write-up, call it with title,sections:[headings] (at least one). The doc goes into the Solo workspace this chat is filed in, otherwise the workspace selected in Docs. It binds that doc to this conversation for drafting: follow it with writeDoc per section (blockId from its blocks, its epoch, done:true), then post the returned link as a Markdown link [title](link) so people can open it. " +
+        "moveDoc takes docId and workspace (a Solo workspace name or id; omit it to use the workspace this chat is filed in) and moves a doc from the owner's selected Docs workspace, or from this conversation's doc, with its history and attachments. An unknown workspace name lists the available ones. " +
         "Collaborate in the original Docs workspace. The owner's request binds the document, writing epoch and edit mode. readDoc returns the bound document, including blocks, tabs, epoch, revision, comments, suggestions and request (the owner’s exact context, selection and mode). Read it first. suggestDoc takes blockId,before,after,note,start (exact Markdown offset); it leaves content untouched for user review. applyDocEdit takes blockId,before,after,start and is allowed only for explicit apply requests. For a draft request, outlineDoc takes blockId,sections:[headings], optional title:{before,after}; read the returned new epoch before writeDoc. writeDoc takes blockId,epoch,content (append chunk),done and optional failed. appendDocSections takes epoch,sections; createDocTab takes title,sections,epoch. replyDocComment takes threadId,requestId,text. History reads take docId and optional before/revision. Workspace and Session attribution come from Buzz. Read before acting; preserve unrelated text.",
       inputSchema: {
         type: "object",
@@ -658,7 +660,7 @@ export class EditorAgentBridge {
     const selected = channel ? this.docCreation?.targetFor(client) : undefined;
     if (!channel || !selected)
       throw new Error(
-        "Agent doc creation is off. The owner can turn on “Let agents create docs” in Settings → Agent docs, or move the doc from Docs.",
+        "Agent doc creation is off. The owner can turn “Let agents create docs” back on in Settings → Agent docs, or move the doc from Docs.",
       );
     if (typeof fields !== "object" || fields === null || Array.isArray(fields))
       throw new Error("input must be an object");
@@ -704,10 +706,12 @@ export class EditorAgentBridge {
     channel: string | undefined,
     fields: unknown,
   ) {
-    const target = channel ? this.docCreation?.targetFor(client) : undefined;
+    const target = channel
+      ? this.docCreation?.targetFor(client, channel)
+      : undefined;
     if (!channel || !target)
       throw new Error(
-        "Agent doc creation is off. The owner can turn on “Let agents create docs” in Settings → Agent docs, or send a request from Docs.",
+        "Agent doc creation is off. The owner can turn “Let agents create docs” back on in Settings → Agent docs, or send a request from Docs.",
       );
     if (typeof fields !== "object" || fields === null || Array.isArray(fields))
       throw new Error("input must be an object");
@@ -748,33 +752,31 @@ export class EditorAgentBridge {
         context: "A doc this agent created at the owner's request.",
       },
     });
-    const link =
-      typeof location === "undefined"
-        ? undefined
-        : docLink({
-            workspaceId: target.workspaceId,
-            docId: doc.id,
-            tabId: null,
-            threadId: null,
-            passage: null,
-            token: undefined,
-          });
-    return JSON.stringify(link ? { ...doc, link } : doc);
+    return JSON.stringify({
+      ...doc,
+      link: docChatLink(target.workspaceId, doc.id),
+    });
   }
   install(ctx: Ctx) {
     this.docCreation ??= {
-      targetFor: (agent) => {
-        const { scope } = ctx.relay.snapshot();
+      targetFor: (agent, channel) => {
+        const { scope, session } = ctx.relay.snapshot();
         if (!scope || ctx.agents.find(agent.pubkey)?.key !== agent.key)
           return undefined;
-        if (readView<unknown>(scope, agentDocCreationKey, false) !== true)
+        if (readView<unknown>(scope, agentDocCreationKey, true) === false)
           return undefined;
+        const solo = session.soloPreferences.snapshot().data;
+        const filed = channel ? solo?.assignments[channel] : undefined;
         const selected = readView<unknown>(scope, editorWorkspaceKey, "");
         return {
           scope,
           workspaceId: editorWorkspaceId(
             scope,
-            typeof selected === "string" ? selected : "",
+            filed && solo?.sections.some((item) => item.id === filed)
+              ? filed
+              : typeof selected === "string"
+                ? selected
+                : "",
           ),
         };
       },

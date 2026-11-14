@@ -22,10 +22,37 @@ const route = z
     token: z.string().max(1000).optional(),
   })
   .strict();
+/** The short form a `buzz://plugin` chat link carries: string params only. */
+const chatRoute = z
+  .object({
+    workspaceId: z.string().min(1).max(512),
+    docId: z.string().uuid(),
+  })
+  .strict();
 /** Admit only read-only document navigation intent; mutations never travel in a route. */
 export function readDocNavigation(value: unknown): DocsRoute | null {
   const parsed = route.safeParse(value);
-  return parsed.success ? { ...parsed.data, token: parsed.data.token } : null;
+  if (parsed.success) return { ...parsed.data, token: parsed.data.token };
+  const short = chatRoute.safeParse(value);
+  return short.success
+    ? {
+        ...short.data,
+        tabId: null,
+        threadId: null,
+        passage: null,
+        token: undefined,
+      }
+    : null;
+}
+/** A link anyone can post in a Buzz message; it opens the doc in this plugin's Docs page. */
+export function docChatLink(workspaceId: string, docId: string): string {
+  const query = new URLSearchParams({
+    id: "local.editor-lab",
+    page: "docs",
+    "route.workspaceId": workspaceId,
+    "route.docId": docId,
+  });
+  return `buzz://plugin?${query}`;
 }
 /** Keep document, tab, passage and sharing links inside Buzz's page navigation. */
 export function docTarget(
