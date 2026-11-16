@@ -1,0 +1,28 @@
+{
+  "id": "lucas.local-files",
+  "name": "Local Files",
+  "apiVersion": 1,
+  "description": "Click a local Markdown path in a message to read it beside the chat, and edit and save it there. Only .md, .markdown and .txt files in your home folder.",
+  "discovery": {
+    "category": "productivity",
+    "tags": [
+      "Files",
+      "Markdown",
+      "Editor"
+    ]
+  },
+  "host": {
+    "files": true,
+    "processes": [
+      {
+        "id": "files",
+        "program": "sh",
+        "args": [
+          "-c",
+          "set -u\nmode=\"$1\"; p=\"$2\"\ncase \"$p\" in \"~/\"*) p=\"$HOME/${p#\"~/\"}\" ;; /*) ;; *) echo \"Use a full path that starts with / or ~/.\" >&2; exit 2 ;; esac\nlower=$(printf '%s' \"$p\" | tr 'A-Z' 'a-z')\ncase \"$lower\" in *.md|*.markdown|*.txt) ;; *) echo \"Only .md, .markdown and .txt files can be opened.\" >&2; exit 3 ;; esac\nhome=$(cd -P -- \"$HOME\" 2>/dev/null && pwd -P) || { echo \"Your home folder could not be found.\" >&2; exit 4; }\ndir=$(cd -P -- \"$(dirname -- \"$p\")\" 2>/dev/null && pwd -P) || { echo \"No such file: $2\" >&2; exit 5; }\nf=\"$dir/$(basename -- \"$p\")\"\ncase \"$f\" in \"$home\"/*) ;; *) echo \"Only files inside your home folder are allowed.\" >&2; exit 6 ;; esac\nif [ -L \"$f\" ]; then echo \"Linked files are not allowed.\" >&2; exit 7; fi\nif [ ! -f \"$f\" ]; then echo \"No such file: $2\" >&2; exit 5; fi\nif [ \"$mode\" = write ]; then\n  if [ ! -w \"$f\" ]; then echo \"This file is read-only.\" >&2; exit 8; fi\n  tmp=$(mktemp \"$dir/.local-files.XXXXXX\") || { echo \"Could not save next to the file.\" >&2; exit 9; }\n  if cat > \"$tmp\" && cat \"$tmp\" > \"$f\"; then rm -f \"$tmp\"; else rm -f \"$tmp\"; echo \"Could not save the file.\" >&2; exit 9; fi\nfi\nprintf '%s' \"$f\"",
+          "local-files"
+        ]
+      }
+    ]
+  }
+}
