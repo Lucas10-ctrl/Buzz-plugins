@@ -144,7 +144,8 @@ function fakeCtx() {
 
 test("registers a panel, an inline renderer and a message accessory", () => {
   const { ctx, reg } = fakeCtx();
-  apply(ctx, { files: {} });
+  // Cordis rejects any non-function return value with "Invalid effect".
+  assert.equal(apply(ctx, { files: {} }), undefined);
   const [panel] = reg.panels;
   assert.equal(panel.keepOpen, true);
   assert.equal(panel.matches(targetFor("~/a.md")), true);

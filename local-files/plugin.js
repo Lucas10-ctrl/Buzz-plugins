@@ -873,6 +873,6 @@ export function apply(ctx, overrides = {}) {
     placement: "message",
     component: views.CodePaths,
   });
-
-  return views;
+  // Return nothing: Cordis treats a returned value from apply as an effect
+  // and rejects anything that is not a function ("Invalid effect").
 }
