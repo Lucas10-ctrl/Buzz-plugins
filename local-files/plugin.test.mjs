@@ -240,3 +240,26 @@ test("reads and writes inside home, refuses everything else", async (t) => {
   await assert.rejects(files.write(join(root, "outside.md"), "x"), /home folder/);
   assert.equal(await readFile(join(root, "outside.md"), "utf8"), "secret");
 });
+
+test("resolve never touches stdin of a process that may have exited", async () => {
+  // Buzz removes a process once it exits; end() then rejects "No such process".
+  const calls = [];
+  const host = {
+    async spawn(_id, { args, onStdout }) {
+      calls.push(args[0]);
+      onStdout(args[0] === "resolve" ? "/home/u/a.md" : "/home/u/a.md");
+      return {
+        end: async () => {
+          throw new Error("No such process");
+        },
+        exited: Promise.resolve(0),
+      };
+    },
+    readFile: async () => new TextEncoder().encode("# Hi"),
+  };
+  const files = createFiles(host);
+  assert.equal((await files.read("~/a.md")).text, "# Hi");
+  // A write whose stdin could not be delivered is reported, not called saved.
+  await assert.rejects(files.write("~/a.md", "x"), /No such process/);
+  assert.deepEqual(calls, ["resolve", "write"]);
+});

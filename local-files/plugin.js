@@ -120,8 +120,19 @@ export function createFiles(host) {
       onStdout: (d) => (out += d),
       onStderr: (d) => (err += d),
     });
-    await proc.end(input ?? "");
+    // Only a write reads stdin. `resolve` may exit before we could close
+    // stdin, and the host then rejects end() with "No such process", so
+    // stdin is left alone there; a failed end() is judged by the exit code.
+    let endError = null;
+    if (input !== undefined) {
+      try {
+        await proc.end(input);
+      } catch (error) {
+        endError = error;
+      }
+    }
     const code = await proc.exited;
+    if (code === 0 && endError) throw endError;
     await new Promise((r) => setTimeout(r, 0));
     if (code !== 0) throw new Error(HELPER_ERRORS[code] || firstLine(err) || "The file helper failed.");
     return out.trim();
