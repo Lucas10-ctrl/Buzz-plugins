@@ -6,11 +6,12 @@
 // dimmed, and you just type. Ctrl/Cmd+S saves, optional autosave, find and
 // replace, Ctrl/Cmd+B/I/K. Changes made on disk by someone else (an agent)
 // load in by themselves, or raise a warning when you have unsaved edits.
+// Image and video paths link the same way and open in a viewer tab.
 //
 // Built from src/ with `npm run build`; plugin.js is the generated bundle.
 
 import { createEditor } from "./editor.js";
-import { createFiles, describe, fileName, findCodePaths, findPaths, pathOf, pathProblem, targetFor } from "./core.js";
+import { createFiles, describe, fileName, findCodePaths, findPaths, kindOf, mimeOf, pathOf, pathProblem, targetFor } from "./core.js";
 
 export * from "./core.js";
 export { linkSpec, toggleWrapSpec } from "./editor.js";
@@ -83,6 +84,17 @@ const styles = {
     overflowWrap: "anywhere",
     textAlign: "inherit",
   },
+  media: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "var(--space-4)",
+    overflow: "auto",
+    background: "var(--surface-sunken, var(--surface-panel))",
+  },
+  mediaItem: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "var(--radius-card, 8px)" },
   chips: { display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginBlockStart: "var(--space-1)" },
 };
 
@@ -390,6 +402,105 @@ export function createViews(React, files, useTabTitle, { drafts = createDrafts()
     );
   }
 
+  /** Read-only viewer for an image or video. Bytes come through the host and
+   * play from a blob: URL (the app's CSP allows blob: for img and media).
+   * Reloads by itself when the file changes on disk. */
+  function MediaPanel({ target }) {
+    const path = pathOf(target) ?? "";
+    const kind = kindOf(path);
+    useTabTitle(fileName(path));
+    const [load, setLoad] = React.useState({ status: "loading" });
+    const [playError, setPlayError] = React.useState(false);
+    const urlRef = React.useRef(null);
+    const sizeRef = React.useRef(-1);
+
+    const show = React.useCallback(
+      async (quiet = false) => {
+        if (!quiet) setLoad({ status: "loading" });
+        try {
+          const { real, bytes } = await files.readBytes(path);
+          // Skip identical re-reads so a playing video isn't restarted.
+          if (quiet && bytes.byteLength === sizeRef.current) return;
+          sizeRef.current = bytes.byteLength;
+          const url = URL.createObjectURL(new Blob([bytes], { type: mimeOf(path) }));
+          if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+          urlRef.current = url;
+          setPlayError(false);
+          setLoad({ status: "ready", real, url, size: bytes.byteLength });
+        } catch (error) {
+          if (!quiet) setLoad({ status: "error", message: describe(error, path) });
+        }
+      },
+      [path],
+    );
+    React.useEffect(() => {
+      void show();
+      return () => {
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      };
+    }, [show]);
+    // Images are small: re-check them now and then so a regenerated file
+    // shows up. Videos only reload on request.
+    React.useEffect(() => {
+      if (load.status !== "ready" || kind !== "image") return;
+      const id = setInterval(() => {
+        if (globalThis.document?.visibilityState !== "hidden") void show(true);
+      }, POLL_MS);
+      return () => clearInterval(id);
+    }, [load.status, kind, show]);
+
+    const mb = load.size >= 0 ? `${(load.size / 1048576).toFixed(load.size < 1048576 ? 2 : 1)} MB` : "";
+    const bar = h(
+      "div",
+      { style: styles.bar, role: "toolbar", "aria-label": "File" },
+      h("div", { style: styles.where, title: load.real || path }, h("bdi", null, load.real || path)),
+      load.status === "ready" && h("span", { style: styles.state }, mb),
+      h(Button, { onClick: () => show(false), title: "Load the file again from disk" }, "Reload"),
+    );
+
+    let body;
+    if (load.status === "loading") body = h("div", { style: styles.status }, "Opening…");
+    else if (load.status === "error")
+      body = h(
+        "div",
+        { style: styles.error, role: "alert" },
+        h("p", { style: { ...styles.p, fontWeight: 650 } }, "Can't open this file"),
+        h("p", { style: styles.p }, load.message),
+        h(Button, { onClick: () => show(false) }, "Try again"),
+      );
+    else if (kind === "video")
+      body = h(
+        "div",
+        { style: { ...styles.media, flexDirection: "column", gap: "var(--space-2)" } },
+        h("video", {
+          key: load.url,
+          src: load.url,
+          controls: true,
+          playsInline: true,
+          preload: "metadata",
+          style: styles.mediaItem,
+          "data-local-files": "video",
+          onError: () => setPlayError(true),
+        }),
+        playError && h("div", { style: styles.note, role: "alert" }, "This video can't play inside Buzz. Its format may not be supported here."),
+      );
+    else
+      body = h(
+        "div",
+        { style: styles.media },
+        h("img", { key: load.url, src: load.url, alt: fileName(path), style: styles.mediaItem, "data-local-files": "image" }),
+      );
+
+    return h("div", { style: styles.pane, "data-local-files": "panel" }, bar, body);
+  }
+
+  /** Picks the editor or the viewer for a target. */
+  function AnyPanel(props) {
+    const kind = kindOf(pathOf(props.target) ?? "");
+    return h(kind === "image" || kind === "video" ? MediaPanel : FilePanel, props);
+  }
+
   /** A path in message prose, drawn as a link that opens the side pane. */
   function PathLink({ text, canOpen, open }) {
     const target = targetFor(text);
@@ -413,7 +524,7 @@ export function createViews(React, files, useTabTitle, { drafts = createDrafts()
     );
   }
 
-  return { FilePanel, PathLink, CodePaths };
+  return { FilePanel, MediaPanel, AnyPanel, PathLink, CodePaths };
 }
 
 export function apply(ctx, overrides = {}) {
@@ -430,7 +541,7 @@ export function apply(ctx, overrides = {}) {
       const path = pathOf(target);
       return path !== null && pathProblem(path) === null;
     },
-    component: views.FilePanel,
+    component: views.AnyPanel,
   });
 
   ctx.conversation.registerInline({

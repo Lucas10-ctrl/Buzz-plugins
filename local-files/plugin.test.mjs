@@ -17,6 +17,8 @@ import {
   createViews,
   findCodePaths,
   findPaths,
+  kindOf,
+  mimeOf,
   pathOf,
   pathProblem,
   targetFor,
@@ -35,11 +37,28 @@ const manifest = JSON.parse(await readFile(new URL("./manifest.json", import.met
 // ---- Paths ------------------------------------------------------------------
 
 test("finds ~/ and absolute Markdown paths in prose", () => {
-  const text = "See ~/Documents/a/b.md, and /home/lucas/x/y.markdown. Not /tmp/z.txt or https://x.com/a.md";
+  const text = "See ~/Documents/a/b.md, and /home/lucas/x/y.markdown. Not /tmp/z.txt or https://x.com/a.md or /tmp/r.sh";
   const found = findPaths(text).map((m) => m.path);
   assert.deepEqual(found, ["~/Documents/a/b.md", "/home/lucas/x/y.markdown"]);
   const [first] = findPaths(text);
   assert.equal(text.slice(first.start, first.end), "~/Documents/a/b.md");
+});
+
+test("finds image and video paths in prose", () => {
+  const text = "Video: ~/ads/video/cut-v2.mp4 and board /home/lucas/ads/storyboard-v2.JPG, logo ~/a/logo.svg.";
+  assert.deepEqual(findPaths(text).map((m) => m.path), ["~/ads/video/cut-v2.mp4", "/home/lucas/ads/storyboard-v2.JPG", "~/a/logo.svg"]);
+  assert.equal(kindOf("~/a.mp4"), "video");
+  assert.equal(kindOf("~/a.MOV"), "video");
+  assert.equal(kindOf("~/a.jpeg"), "image");
+  assert.equal(kindOf("~/a.md"), "text");
+  assert.equal(kindOf("~/a.sh"), null);
+  assert.equal(mimeOf("~/a.jpg"), "image/jpeg");
+  assert.equal(mimeOf("~/a.webm"), "video/webm");
+});
+
+test("finds paths in Markdown image and link destinations", () => {
+  const content = "![storyboard](/home/lucas/ads/storyboard-v2.jpg)\n[cut](<~/ads/cut.mp4>) and [site](https://x.com/a.png)";
+  assert.deepEqual(findCodePaths(content), ["/home/lucas/ads/storyboard-v2.jpg", "~/ads/cut.mp4"]);
 });
 
 test("skips non-paths", () => {
@@ -64,7 +83,8 @@ test("targets round-trip and safety rules", () => {
   assert.equal(pathOf("https://x"), null);
   assert.equal(pathProblem("~/a.md"), null);
   assert.equal(pathProblem("/home/lucas/a.TXT"), null);
-  assert.match(pathProblem("~/a.sh"), /Only \.md/);
+  assert.equal(pathProblem("~/a.mp4"), null);
+  assert.match(pathProblem("~/a.sh"), /Only Markdown/);
   assert.match(pathProblem("a.md"), /full path/);
   assert.match(pathProblem("~/x/../a.md"), /\.\./);
 });
@@ -228,9 +248,45 @@ test("reads and writes inside home, refuses everything else", async (t) => {
   await assert.rejects(files.read(join(root, "outside.md")), /home folder/);
   await assert.rejects(files.read("~/escape/outside.md"), /home folder/);
   await assert.rejects(files.read("~/docs/link.md"), /Linked files/);
-  await assert.rejects(files.write("~/docs/run.sh", "x"), /Only \.md/);
+  await assert.rejects(files.write("~/docs/run.sh", "x"), /Only Markdown/);
   await assert.rejects(files.write(join(root, "outside.md"), "x"), /home folder/);
   assert.equal(await readFile(join(root, "outside.md"), "utf8"), "secret");
+});
+
+test("reads images and videos as bytes, never writes them", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "local-files-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  await mkdir(join(home, "v"), { recursive: true });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  await writeFile(join(home, "v", "shot.PNG"), png);
+  await writeFile(join(home, "v", "cut.mp4"), Buffer.from("not really a video"));
+  const files = createFiles(realHost(home));
+  const img = await files.readBytes("~/v/shot.PNG");
+  assert.equal(img.real, join(home, "v", "shot.PNG"));
+  assert.deepEqual(Buffer.from(img.bytes), png);
+  assert.equal((await files.readBytes("~/v/cut.mp4")).bytes.byteLength, 18);
+  await assert.rejects(files.read("~/v/cut.mp4"), /text/);
+  await assert.rejects(files.write("~/v/cut.mp4", "x"), /Only text/);
+  // The shell script refuses a media write on its own, too.
+  const host = realHost(home);
+  let code;
+  const proc = await host.spawn("files", { args: ["write", "~/v/cut.mp4"], onStdout() {}, onStderr() {} });
+  await proc.end("x");
+  code = await proc.exited;
+  assert.equal(code, 3);
+  assert.equal(await readFile(join(home, "v", "cut.mp4"), "utf8"), "not really a video");
+});
+
+test("media panel and panel switch render without throwing", () => {
+  const files = { readBytes: () => new Promise(() => {}), read: () => new Promise(() => {}) };
+  const views = createViews(React, files, () => {}, { drafts: createDrafts(null), mountEditor: () => ({}) });
+  const html = renderToStaticMarkup(React.createElement(views.AnyPanel, { target: targetFor("~/v/cut.mp4") }));
+  assert.match(html, /Opening/);
+  assert.match(html, /Reload/);
+  assert.doesNotMatch(html, /Save/);
+  const md = renderToStaticMarkup(React.createElement(views.AnyPanel, { target: targetFor("~/v/a.md") }));
+  assert.match(md, /Opening/);
 });
 
 test("resolve never touches stdin of a process that may have exited", async () => {

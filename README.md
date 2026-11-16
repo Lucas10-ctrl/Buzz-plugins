@@ -11,7 +11,7 @@ Buzz is great for multi-agent coordination and project management. Here's some p
 | [agent-skills](agent-skills) | Gives each agent its own skills with slash commands: reusable instructions it loads when a task matches. Isolated in buzz. |
 | [hermes-agents](hermes-agents) | Assign hermes profiles for your Buzz agents, each with its own hermes skills, model, and memory managed by your Hermes setup. Not just running on hermes, but individual profiles. |
 | [opencode-connector](opencode-connector) | Run OpenCode as a Buzz agent on any model it knows, including local models through Lemonade. Each thread is one continuing OpenCode session. |
-| [local-files](local-files) | Click a local Markdown path in a message to open it beside the chat in an Omawrite-style editor: type, save, and see agents' changes load in. |
+| [local-files](local-files) | Click a local Markdown, image or video path in a message to open it beside the chat. Markdown opens in an Omawrite-style editor (type, save, see agents' changes load in); images and videos open in a viewer. |
 
 ## Install
 
