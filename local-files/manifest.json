@@ -2,7 +2,7 @@
   "id": "lucas.local-files",
   "name": "Local Files",
   "apiVersion": 1,
-  "description": "Click a local Markdown, image or video path in a message to open it beside the chat. Markdown opens in an editor you can save; images and videos open in a viewer. Only files in your home folder.",
+  "description": "Click a local file or folder path in a message to open it beside the chat. Markdown opens in an editor you can save, images and videos in a viewer, folders as a list. Only inside your home folder.",
   "discovery": {
     "category": "productivity",
     "tags": [
@@ -10,7 +10,8 @@
       "Markdown",
       "Editor",
       "Images",
-      "Video"
+      "Video",
+      "Folders"
     ]
   },
   "host": {
@@ -22,6 +23,15 @@
         "args": [
           "-c",
           "p=\"$2\"\ncase \"$p\" in \"~/\"*) p=\"$HOME/${p#\"~/\"}\";; /*) ;; *) exit 2;; esac\nl=$(printf %s \"$p\" | tr A-Z a-z)\ncase $l in *.md|*.markdown|*.txt) ;; *.png|*.jpg|*.jpeg|*.gif|*.webp|*.avif|*.svg|*.mp4|*.m4v|*.webm|*.mov) [ \"$1\" = write ] && exit 3;; *) exit 3;; esac\nh=$(cd -P -- \"$HOME\" && pwd -P) || exit 4\nd=$(cd -P -- \"$(dirname -- \"$p\")\" 2>/dev/null && pwd -P) || exit 5\nf=\"$d/$(basename -- \"$p\")\"\ncase \"$f\" in \"$h\"/*) ;; *) exit 6;; esac\n[ -L \"$f\" ] && exit 7\n[ -f \"$f\" ] || exit 5\nif [ \"$1\" = write ]; then\n[ -w \"$f\" ] || exit 8\nt=$(mktemp \"$d/.local-files.XXXXXX\") || exit 9\nif cat >\"$t\" && cat \"$t\" >\"$f\"; then rm -f \"$t\"; else rm -f \"$t\"; exit 9; fi\nfi\nprintf %s \"$f\"",
+          "local-files"
+        ]
+      },
+      {
+        "id": "folder",
+        "program": "sh",
+        "args": [
+          "-c",
+          "p=\"$2\"\ncase \"$p\" in \"~\") p=\"$HOME\";; \"~/\"*) p=\"$HOME/${p#\"~/\"}\";; /*) ;; *) exit 2;; esac\nh=$(cd -P -- \"$HOME\" && pwd -P) || exit 4\n[ -e \"$p\" ] || exit 5\n[ -d \"$p\" ] || exit 11\nf=$(cd -P -- \"$p\" 2>/dev/null && pwd -P) || exit 5\ncase \"$f/\" in \"$h\"/*) ;; *) exit 6;; esac\nprintf '%s\\n%s\\n' \"$f\" \"$h\"\nif [ \"$1\" = show ]; then\nfor o in xdg-open open; do command -v $o >/dev/null && { nohup $o \"$f\" >/dev/null 2>&1 & exit 0; }; done\nexit 10\nfi\ncd \"$f\" || exit 5\nn=0\nfor e in *; do\n[ -e \"$e\" ] || [ -L \"$e\" ] || continue\ncase \"$e\" in *\"\n\"*) continue;; esac\nn=$((n+1)); [ $n -gt 2000 ] && break\nif [ -L \"$e\" ]; then t=l; elif [ -d \"$e\" ]; then t=d; else t=f; fi\ns=0; [ $t = f ] && s=$(($(wc -c <\"$e\" 2>/dev/null || echo 0)))\nprintf '%s\\t%s\\t%s\\n' $t $s \"$e\"\ndone",
           "local-files"
         ]
       }

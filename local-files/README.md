@@ -1,6 +1,6 @@
 # Local Files
 
-Read and edit local Markdown files, and view local images and videos, beside the chat.
+Read and edit local Markdown files, view local images and videos, and browse local folders, beside the chat.
 
 When a message contains a path to a Markdown file on your computer, such as `~/Documents/brief.md` or `/home/you/notes/plan.md`, the path becomes a link. Click it and the file opens in a tab in the side pane. The tab stays open until you close it.
 
@@ -16,6 +16,17 @@ The tab is one writing surface, in the style of Omawrite: you just type. Heading
 
 Paths to images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.svg`) and videos (`.mp4`, `.m4v`, `.webm`, `.mov`) link the same way and open in a viewer tab: the picture fits the pane, and videos play with the usual controls. **Reload** loads the file again; images also refresh by themselves when the file changes. These files are never written. Buzz reads at most 50 MB per file, so bigger videos show a message instead. Whether a video plays depends on the formats the Buzz window supports (`.mov` often won't on Linux).
 
+## Folders
+
+Folder paths link too, such as `~/Documents/videos/renders/` or `/home/you/Documents/videos/renders`. A path counts as a folder when it ends in `/` or its last part has no dot, and it must be in your home folder (`~/…`, `/home/<you>/…` or `/Users/<you>/…`), so things like `/slideshow` or `/api/v1` stay plain text.
+
+Click one and the folder opens in a tab as a list: subfolders first, then files with their sizes.
+
+- **Click a subfolder** to go into it. **Up** goes back, but never above your home folder.
+- **Click a Markdown, text, image or video file** to open it in its own tab, as if its path had been clicked in the chat. Other files are listed but greyed out.
+- **Open in file manager** shows the folder in your system file manager (`xdg-open` on Linux, `open` on macOS).
+- The list refreshes by itself every few seconds, so files an agent is still writing show up. Hidden files (names starting with `.`) aren't listed, and at most 2,000 items are.
+
 ## Where paths are found
 
 Paths in plain text become links. Paths written inside `code` or a code block get an **Open file.md** button under the message instead, because Buzz doesn't let plugins change code. The same goes for paths used as a Markdown image or link, such as `![storyboard](/home/you/board.jpg)`.
@@ -23,15 +34,16 @@ Paths in plain text become links. Paths written inside `code` or a code block ge
 ## Safety
 
 - Only Markdown, text, image and video files (the extensions above), and only inside your home folder. Only `.md`, `.markdown` and `.txt` can be saved.
-- Linked files (symlinks), and folders that link outside your home, are refused.
+- Linked files (symlinks), and folders that link outside your home, are refused. A linked folder that stays inside your home opens.
 - A missing or refused file shows a clear message in the tab.
 
-Each read and write goes through a small `sh` script declared in the manifest. It resolves the real path and checks these rules again before anything is read or written. A save goes to a temporary file first, so the file is only replaced once all of your text has arrived.
+Each read and write goes through a small `sh` script declared in the manifest, and each folder listing through a second one. It resolves the real path and checks these rules again before anything is read or written. A save goes to a temporary file first, so the file is only replaced once all of your text has arrived.
 
 ## Permissions it asks for
 
 - **Files** (`host.files`): to read the file you open.
-- **Process** `sh`: runs the path check and the save described above.
+- **Process** `sh` (`files`): runs the path check and the save described above.
+- **Process** `sh` (`folder`): lists a folder, or opens it in your file manager, after the same home-folder check.
 
 ## Install
 
@@ -54,5 +66,6 @@ The tests run the real `sh` script against a temporary home folder. React comes 
 ## Not yet
 
 - Paths with spaces aren't detected.
+- Relative paths (`renders/`, `hyperframes/`) aren't linked, because the plugin can't tell what they're relative to.
 - Links inside an open file to other local files aren't clickable.
 - Markers are dimmed, not hidden. Tables and images show as their Markdown text.

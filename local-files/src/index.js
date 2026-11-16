@@ -6,12 +6,30 @@
 // dimmed, and you just type. Ctrl/Cmd+S saves, optional autosave, find and
 // replace, Ctrl/Cmd+B/I/K. Changes made on disk by someone else (an agent)
 // load in by themselves, or raise a warning when you have unsaved edits.
-// Image and video paths link the same way and open in a viewer tab.
+// Image and video paths link the same way and open in a viewer tab. Folder
+// paths open a folder tab: browse into subfolders, open the files above in
+// their own tabs, or show the folder in the system file manager.
 //
 // Built from src/ with `npm run build`; plugin.js is the generated bundle.
 
 import { createEditor } from "./editor.js";
-import { createFiles, describe, fileName, findCodePaths, findPaths, kindOf, mimeOf, pathOf, pathProblem, targetFor } from "./core.js";
+import {
+  createFiles,
+  createFolders,
+  describe,
+  fileName,
+  findCodePaths,
+  findPaths,
+  folderName,
+  folderOf,
+  folderProblem,
+  kindOf,
+  linkTarget,
+  mimeOf,
+  pathOf,
+  pathProblem,
+  targetFor,
+} from "./core.js";
 
 export * from "./core.js";
 export { linkSpec, toggleWrapSpec } from "./editor.js";
@@ -95,6 +113,23 @@ const styles = {
     background: "var(--surface-sunken, var(--surface-panel))",
   },
   mediaItem: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "var(--radius-card, 8px)" },
+  list: { flex: 1, minHeight: 0, overflow: "auto", padding: "var(--space-1) 0" },
+  entry: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-3)",
+    width: "100%",
+    padding: "var(--space-2) var(--space-4)",
+    border: 0,
+    background: "none",
+    font: "inherit",
+    color: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  entryIcon: { width: "1.25rem", flex: "none", textAlign: "center" },
+  entryName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  entrySize: { color: "var(--text-metadata)", fontSize: "var(--text-body-sm)", fontVariantNumeric: "tabular-nums" },
   chips: { display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginBlockStart: "var(--space-1)" },
 };
 
@@ -128,8 +163,18 @@ export function createDrafts(storage = globalThis.localStorage) {
   };
 }
 
+const ICONS = { folder: "📁", image: "🖼️", video: "🎞️", text: "📄", other: "·" };
+
+export const formatSize = (n) =>
+  n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`;
+
 /** Builds the React views. Exported so tests can render them. */
-export function createViews(React, files, useTabTitle, { drafts = createDrafts(), mountEditor = createEditor } = {}) {
+export function createViews(
+  React,
+  files,
+  useTabTitle,
+  { drafts = createDrafts(), mountEditor = createEditor, folders = null, openTarget = (target, context) => context?.open?.(target) ?? false } = {},
+) {
   const h = React.createElement;
 
   const Button = ({ variant = "subtle", children, ...props }) =>
@@ -501,13 +546,118 @@ export function createViews(React, files, useTabTitle, { drafts = createDrafts()
     return h(kind === "image" || kind === "video" ? MediaPanel : FilePanel, props);
   }
 
+  /** A folder's contents. Subfolders open in place (Up goes back); files the
+   * plugin can show open in their own tab. Refreshes by itself while shown,
+   * so files an agent is still writing appear. */
+  function FolderPanel({ target, context }) {
+    const start = folderOf(target) ?? "";
+    const [path, setPath] = React.useState(start);
+    React.useEffect(() => setPath(start), [start]);
+    const [load, setLoad] = React.useState({ status: "loading" });
+    const [note, setNote] = React.useState("");
+    const alive = React.useRef(true);
+    React.useEffect(() => () => void (alive.current = false), []);
+    useTabTitle(load.real ? folderName(load.real) : folderName(path));
+
+    const read = React.useCallback(
+      async (quiet = false) => {
+        if (!quiet) setLoad({ status: "loading" });
+        try {
+          const listing = await folders.list(path);
+          if (alive.current) setLoad({ status: "ready", ...listing });
+        } catch (error) {
+          if (alive.current && !quiet) setLoad({ status: "error", message: describe(error, path) });
+        }
+      },
+      [path],
+    );
+    React.useEffect(() => void read(), [read]);
+    React.useEffect(() => {
+      if (load.status !== "ready") return;
+      const id = setInterval(() => {
+        if (globalThis.document?.visibilityState !== "hidden") void read(true);
+      }, POLL_MS);
+      return () => clearInterval(id);
+    }, [load.status, read]);
+
+    const real = load.real || path;
+    const parent = load.real && load.real !== load.home ? load.real.replace(/\/[^/]+$/, "") || "/" : null;
+    const show = async () => {
+      setNote("");
+      try {
+        await folders.show(real);
+        if (alive.current) setNote("Opened in your file manager.");
+      } catch (error) {
+        if (alive.current) setNote(describe(error, real));
+      }
+    };
+    const openEntry = (entry) => {
+      const full = `${real}/${entry.name}`;
+      if (entry.type === "d") return setPath(full);
+      if (!openTarget(targetFor(full), context)) setNote(`Couldn't open ${entry.name} here.`);
+    };
+
+    const bar = h(
+      "div",
+      { style: styles.bar, role: "toolbar", "aria-label": "Folder" },
+      h(Button, { onClick: () => parent && setPath(parent), disabled: !parent, title: "Go up one folder" }, "Up"),
+      h("div", { style: styles.where, title: real }, h("bdi", null, real)),
+      load.status === "ready" && h("span", { style: styles.state }, `${load.entries.length} item${load.entries.length === 1 ? "" : "s"}`),
+      h(Button, { onClick: () => read(false), title: "Read the folder again" }, "Refresh"),
+      h(Button, { onClick: show, title: "Open this folder in the system file manager" }, "Open in file manager"),
+    );
+
+    let body;
+    if (load.status === "loading") body = h("div", { style: styles.status }, "Opening…");
+    else if (load.status === "error")
+      body = h(
+        "div",
+        { style: styles.error, role: "alert" },
+        h("p", { style: { ...styles.p, fontWeight: 650 } }, "Can't open this folder"),
+        h("p", { style: styles.p }, load.message),
+        h(Button, { onClick: () => read(false) }, "Try again"),
+      );
+    else if (!load.entries.length) body = h("div", { style: styles.status }, "This folder is empty.");
+    else
+      body = h(
+        "div",
+        { style: styles.list, role: "list", "data-local-files": "folder-list" },
+        load.entries.map((entry) => {
+          const isDir = entry.type === "d";
+          const full = `${real}/${entry.name}`;
+          const kind = isDir ? "folder" : pathProblem(full) === null ? kindOf(full) : null;
+          const usable = isDir || (kind && entry.type === "f");
+          return h(
+            "button",
+            {
+              key: entry.name,
+              type: "button",
+              role: "listitem",
+              style: { ...styles.entry, ...(usable ? null : { cursor: "default", opacity: 0.55 }) },
+              disabled: !usable,
+              title: usable ? (isDir ? `Open ${entry.name}` : `Open ${entry.name} in a tab`) : `${entry.name} can't be opened here`,
+              onClick: usable ? () => openEntry(entry) : undefined,
+              "data-local-files": "entry",
+            },
+            h("span", { style: styles.entryIcon, "aria-hidden": true }, ICONS[kind ?? "other"]),
+            h("span", { style: styles.entryName }, isDir ? `${entry.name}/` : entry.name),
+            entry.type === "f" && h("span", { style: styles.entrySize }, formatSize(entry.size)),
+            entry.type === "l" && h("span", { style: styles.entrySize }, "link"),
+          );
+        }),
+      );
+
+    return h("div", { style: styles.pane, "data-local-files": "folder" }, bar, note && h("div", { style: styles.note, role: "status" }, note), body);
+  }
+
   /** A path in message prose, drawn as a link that opens the side pane. */
   function PathLink({ text, canOpen, open }) {
-    const target = targetFor(text);
+    const target = linkTarget(text);
     if (!canOpen?.(target)) return text;
+    const name = folderOf(target) !== null ? folderName(text) : fileName(text);
     return h(
       "button",
-      { type: "button", style: styles.pathLink, title: `Open ${fileName(text)} beside the chat`, "data-local-files": "link", onClick: () => open(target) },
+      { type: "button", style: styles.pathLink, title: `Open ${name} beside the chat`, "data-local-files": "link", onClick: () => open(target) },
       text,
     );
   }
@@ -515,23 +665,40 @@ export function createViews(React, files, useTabTitle, { drafts = createDrafts()
   /** Buttons below a message for paths written inside code. */
   function CodePaths({ message, canOpen, open }) {
     const paths = React.useMemo(() => findCodePaths(message?.content), [message?.content]);
-    const openable = paths.filter((p) => canOpen?.(targetFor(p)));
+    const openable = paths.filter((p) => canOpen?.(linkTarget(p)));
     if (!openable.length) return null;
     return h(
       "div",
       { style: styles.chips, "data-local-files": "chips" },
-      openable.map((p) => h(Button, { key: p, onClick: () => open(targetFor(p)), title: p }, `Open ${fileName(p)}`)),
+      openable.map((p) => {
+        const target = linkTarget(p);
+        return h(Button, { key: p, onClick: () => open(target), title: p }, `Open ${folderOf(target) !== null ? folderName(p) : fileName(p)}`);
+      }),
     );
   }
 
-  return { FilePanel, MediaPanel, AnyPanel, PathLink, CodePaths };
+  return { FilePanel, MediaPanel, AnyPanel, FolderPanel, PathLink, CodePaths };
 }
 
 export function apply(ctx, overrides = {}) {
   const React = ctx.react;
   const files = overrides.files ?? createFiles(ctx.host);
   const useTabTitle = typeof ctx.panels?.useTabTitle === "function" ? ctx.panels.useTabTitle : () => {};
-  const views = createViews(React, files, useTabTitle, overrides);
+  const folders = overrides.folders ?? createFolders(ctx.host);
+  // A file picked in a folder tab opens in its own tab, as if its path had
+  // been clicked in the conversation; older hosts replace the folder tab.
+  const openTarget = (target, context) => {
+    try {
+      if (context?.channelId && typeof ctx.panels.requestOpen === "function") {
+        const opened = ctx.panels.requestOpen({ target, channelId: context.channelId, ...(context.rootId ? { rootId: context.rootId } : {}) });
+        if (opened) return true;
+      }
+    } catch {
+      /* fall through */
+    }
+    return context?.open?.(target) ?? false;
+  };
+  const views = createViews(React, files, useTabTitle, { ...overrides, folders, openTarget });
 
   ctx.panels.register({
     id: "file",
@@ -544,16 +711,27 @@ export function apply(ctx, overrides = {}) {
     component: views.AnyPanel,
   });
 
+  ctx.panels.register({
+    id: "folder",
+    title: "Local folder",
+    keepOpen: true,
+    matches: (target) => {
+      const path = folderOf(target);
+      return path !== null && folderProblem(path) === null;
+    },
+    component: views.FolderPanel,
+  });
+
   ctx.conversation.registerInline({
     id: "paths",
-    title: "Local file paths",
+    title: "Local file and folder paths",
     matches: (content) => findPaths(content?.text).map(({ start, end }) => ({ start, end })),
     component: views.PathLink,
   });
 
   ctx.conversation.registerAccessory({
     id: "code-paths",
-    title: "Open local files",
+    title: "Open local files and folders",
     placement: "message",
     component: views.CodePaths,
   });

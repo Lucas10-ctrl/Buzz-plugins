@@ -29,14 +29,27 @@ export const mimeOf = (path) => IMAGE_TYPES[extOf(path)] ?? VIDEO_TYPES[extOf(pa
 const CANDIDATE = /(^|[^\w/.~:-])((?:~\/|\/)[^\s`'"<>()[\]{}|\\]+)/g;
 const TRAILING = /[.,;:!?*_]+$/;
 
-/** Markdown, image and video file paths in plain text, as UTF-16 ranges. */
+/** Whether a path names a folder we link: under the home folder (`~/…`,
+ * `/home/<you>/…`, `/Users/<you>/…`), and either ending in `/` or with no dot
+ * in its last part. Files without an extension may match too; opening one
+ * then says it isn't a folder. */
+export function isFolderPath(path) {
+  if (typeof path !== "string") return false;
+  if (!(path.startsWith("~/") || /^\/(home|Users)\/[^/]+\/./.test(path) || path.startsWith("/root/"))) return false;
+  if (path.split("/").includes("..")) return false;
+  if (path.endsWith("/")) return true;
+  return !path.split("/").pop().includes(".");
+}
+
+/** Markdown, image and video file paths, and folder paths, in plain text, as
+ * UTF-16 ranges. */
 export function findPaths(text) {
   const out = [];
   if (typeof text !== "string" || !text.includes("/")) return out;
   for (const match of text.matchAll(CANDIDATE)) {
     let path = match[2];
     path = path.replace(TRAILING, "");
-    if (path.startsWith("//") || !LINK_EXT.test(path)) continue;
+    if (path.startsWith("//") || !(LINK_EXT.test(path) || isFolderPath(path))) continue;
     if (!path.startsWith("~/") && path.split("/").length < 3) continue;
     const start = match.index + match[1].length;
     out.push({ start, end: start + path.length, path });
@@ -69,6 +82,21 @@ export function findCodePaths(content) {
 }
 
 export const targetFor = (path) => `${SCHEME}${path}`;
+export const FOLDER_SCHEME = "local-folder:";
+export const folderTargetFor = (path) => `${FOLDER_SCHEME}${path}`;
+export const folderOf = (target) =>
+  typeof target === "string" && target.startsWith(FOLDER_SCHEME) ? target.slice(FOLDER_SCHEME.length) : null;
+/** The side-pane target for a path found in a message. */
+export const linkTarget = (path) => (LINK_EXT.test(path) ? targetFor(path) : folderTargetFor(path));
+/** A folder's display name, keeping its trailing slash. */
+export const folderName = (path) => `${fileName(path)}/`;
+
+export function folderProblem(path) {
+  if (typeof path !== "string" || !path) return "No folder was given.";
+  if (path !== "~" && !path.startsWith("/") && !path.startsWith("~/")) return "Use a full path that starts with / or ~/.";
+  if (path.split("/").includes("..")) return "Paths with .. are not allowed.";
+  return null;
+}
 export const pathOf = (target) =>
   typeof target === "string" && target.startsWith(SCHEME) ? target.slice(SCHEME.length) : null;
 export const fileName = (path) => String(path).split("/").filter(Boolean).pop() || String(path);
@@ -110,6 +138,80 @@ export const SCRIPT = [
   'fi',
   "printf %s \"$f\"",
 ].join("\n");
+
+// Runs as `sh -c FOLDER_SCRIPT local-files <mode> <path>`. Prints the real
+// folder and the real home folder on two lines; `list` then prints one
+// `type<TAB>bytes<TAB>name` line per entry (type d, f or l for a link), at
+// most 2000, skipping hidden names and names with line breaks. `show` opens
+// the folder in the system file manager instead.
+export const FOLDER_SCRIPT = [
+  'p="$2"',
+  'case "$p" in "~") p="$HOME";; "~/"*) p="$HOME/${p#"~/"}";; /*) ;; *) exit 2;; esac',
+  'h=$(cd -P -- "$HOME" && pwd -P) || exit 4',
+  '[ -e "$p" ] || exit 5',
+  '[ -d "$p" ] || exit 11',
+  'f=$(cd -P -- "$p" 2>/dev/null && pwd -P) || exit 5',
+  'case "$f/" in "$h"/*) ;; *) exit 6;; esac',
+  "printf '%s\\n%s\\n' \"$f\" \"$h\"",
+  'if [ "$1" = show ]; then',
+  'for o in xdg-open open; do command -v $o >/dev/null && { nohup $o "$f" >/dev/null 2>&1 & exit 0; }; done',
+  'exit 10',
+  'fi',
+  'cd "$f" || exit 5',
+  'n=0',
+  'for e in *; do',
+  '[ -e "$e" ] || [ -L "$e" ] || continue',
+  'case "$e" in *"',
+  '"*) continue;; esac',
+  'n=$((n+1)); [ $n -gt 2000 ] && break',
+  'if [ -L "$e" ]; then t=l; elif [ -d "$e" ]; then t=d; else t=f; fi',
+  's=0; [ $t = f ] && s=$(($(wc -c <"$e" 2>/dev/null || echo 0)))',
+  "printf '%s\\t%s\\t%s\\n' $t $s \"$e\"",
+  'done',
+].join("\n");
+
+export const FOLDER_ERRORS = {
+  2: "Use a full path that starts with / or ~/.",
+  4: "Your home folder could not be found.",
+  5: "No such folder.",
+  6: "Only folders inside your home folder are allowed.",
+  10: "No file manager was found to open this folder.",
+  11: "This is a file, not a folder.",
+};
+
+/** Parses the `list` output of FOLDER_SCRIPT. */
+export function parseListing(out) {
+  const lines = String(out ?? "").split("\n");
+  const real = lines[0] ?? "";
+  const home = lines[1] ?? "";
+  const entries = [];
+  for (const line of lines.slice(2)) {
+    const m = /^([dfl])\t(\d*)\t(.+)$/.exec(line);
+    if (m) entries.push({ type: m[1], size: Number(m[2]) || 0, name: m[3] });
+  }
+  entries.sort((a, b) => (a.type === "d") !== (b.type === "d") ? (a.type === "d" ? -1 : 1) : a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  return { real, home, entries };
+}
+
+/** Folder access through the host's `folder` process. Tests pass their own. */
+export function createFolders(host) {
+  async function run(mode, path) {
+    const problem = folderProblem(path);
+    if (problem) throw new Error(problem);
+    if (typeof host?.spawn !== "function") throw new Error("This version of Buzz can't run the folder helper.");
+    let out = "";
+    let err = "";
+    const proc = await host.spawn("folder", { args: [mode, path], onStdout: (d) => (out += d), onStderr: (d) => (err += d) });
+    const code = await proc.exited;
+    await new Promise((r) => setTimeout(r, 0));
+    if (code !== 0) throw new Error(FOLDER_ERRORS[code] || firstLine(err) || "The folder helper failed.");
+    return out;
+  }
+  return {
+    list: async (path) => parseListing(await run("list", path)),
+    show: async (path) => void (await run("show", path)),
+  };
+}
 
 export const HELPER_ERRORS = {
   2: "Use a full path that starts with / or ~/.",

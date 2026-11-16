@@ -4,13 +4,22 @@
 // node_modules has react and react-dom.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  FOLDER_SCRIPT,
   SCRIPT,
+  createFolders,
+  folderOf,
+  folderProblem,
+  folderTargetFor,
+  formatSize,
+  isFolderPath,
+  linkTarget,
+  parseListing,
   apply,
   createFiles,
   createDrafts,
@@ -209,11 +218,11 @@ test("manifest passes Buzz's host process limits", () => {
 });
 
 /** A host whose spawn runs the manifest's process for real, with HOME set. */
-function realHost(home) {
+function realHost(home, env = {}) {
   return {
     async spawn(id, { args, onStdout, onStderr }) {
       const proc = manifest.host.processes.find((p) => p.id === id);
-      const child = spawn(proc.program, [...proc.args, ...args], { env: { ...process.env, HOME: home } });
+      const child = spawn(proc.program, [...proc.args, ...args], { env: { ...process.env, ...env, HOME: home } });
       child.stdout.on("data", (d) => onStdout(String(d)));
       child.stderr.on("data", (d) => onStderr(String(d)));
       const exited = new Promise((r) => child.on("close", (code) => r(code)));
@@ -310,4 +319,128 @@ test("resolve never touches stdin of a process that may have exited", async () =
   // A write whose stdin could not be delivered is reported, not called saved.
   await assert.rejects(files.write("~/a.md", "x"), /No such process/);
   assert.deepEqual(calls, ["resolve", "write"]);
+});
+
+// ---- Folders ----------------------------------------------------------------
+
+test("finds folder paths under home, not other slash words", () => {
+  const text =
+    "Files: /home/lucas/Documents/Intelliminds/videos/30-day-reels-shorts/renders/ and ~/Documents/Intelliminds/social/hyperframes. " +
+    "Not /slideshow, /motion-graphics, /usr/local/bin, origin/main, /api/v1/users or ~/x/run.sh; file ~/a/b.md.";
+  assert.deepEqual(findPaths(text).map((m) => m.path), [
+    "/home/lucas/Documents/Intelliminds/videos/30-day-reels-shorts/renders/",
+    "~/Documents/Intelliminds/social/hyperframes",
+    "~/a/b.md",
+  ]);
+  assert.equal(isFolderPath("/Users/me/Desktop"), true);
+  assert.equal(isFolderPath("~/.hermes/profiles/"), true);
+  assert.equal(isFolderPath("~/.env.local"), false);
+  assert.equal(isFolderPath("~/a/../b"), false);
+  assert.equal(linkTarget("~/a/b.md"), targetFor("~/a/b.md"));
+  assert.equal(linkTarget("~/a/b/"), folderTargetFor("~/a/b/"));
+  assert.equal(folderOf(folderTargetFor("~/x")), "~/x");
+  assert.equal(folderOf(targetFor("~/x.md")), null);
+  assert.equal(folderProblem("~/x"), null);
+  assert.match(folderProblem("x/y"), /full path/);
+  assert.match(folderProblem("/home/u/../etc"), /\.\./);
+  assert.deepEqual(findCodePaths("Here: **`/home/lucas/videos/renders/`**"), ["/home/lucas/videos/renders/"]);
+});
+
+test("parses a listing, folders first in natural order", () => {
+  const out = "/home/u/r\n/home/u\nf\t20\tday10.mp4\nf\t10\tday2.mp4\nd\t0\tday01-carousel\nl\t0\tlink\nnonsense\n";
+  const { real, home, entries } = parseListing(out);
+  assert.equal(real, "/home/u/r");
+  assert.equal(home, "/home/u");
+  assert.deepEqual(entries.map((e) => e.name), ["day01-carousel", "day2.mp4", "day10.mp4", "link"]);
+  assert.equal(entries[1].size, 10);
+  assert.equal(formatSize(512), "512 B");
+  assert.equal(formatSize(2048), "2 KB");
+  assert.equal(formatSize(3.5 * 1048576), "3.5 MB");
+});
+
+test("manifest declares the folder helper", () => {
+  const proc = manifest.host.processes.find((p) => p.id === "folder");
+  assert.equal(proc.program, "sh");
+  assert.deepEqual(proc.args, ["-c", FOLDER_SCRIPT, "local-files"]);
+});
+
+test("lists and shows folders inside home, refuses everything else", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "local-files-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  const renders = join(home, "videos", "renders");
+  await mkdir(join(renders, "day01-carousel"), { recursive: true });
+  await writeFile(join(renders, "day01-ig.mp4"), Buffer.alloc(1234));
+  await writeFile(join(renders, "notes.md"), "# n");
+  await writeFile(join(renders, ".hidden"), "x");
+  await writeFile(join(renders, "odd\nname.md"), "x");
+  await writeFile(join(renders, "with space.png"), "x");
+  await symlink(root, join(home, "escape"));
+  await symlink(join(renders, "notes.md"), join(renders, "alias.md"));
+  await mkdir(join(root, "outside"));
+  const folders = createFolders(realHost(home));
+
+  const listing = await folders.list("~/videos/renders/");
+  assert.equal(listing.real, renders);
+  assert.equal(listing.home, home);
+  assert.deepEqual(
+    listing.entries.map((e) => [e.type, e.name, e.size]),
+    [
+      ["d", "day01-carousel", 0],
+      ["l", "alias.md", 0],
+      ["f", "day01-ig.mp4", 1234],
+      ["f", "notes.md", 3],
+      ["f", "with space.png", 1],
+    ],
+  );
+  assert.equal((await folders.list("~")).real, home);
+  assert.equal((await folders.list(home)).entries.find((e) => e.name === "videos").type, "d");
+  await assert.rejects(folders.list("~/videos/missing"), /No such folder/);
+  await assert.rejects(folders.list("~/videos/renders/notes.md"), /not a folder/);
+  await assert.rejects(folders.list(join(root, "outside")), /inside your home/);
+  await assert.rejects(folders.list("~/escape"), /inside your home/);
+  await assert.rejects(folders.list("~/escape/outside"), /inside your home/);
+  await assert.rejects(folders.list("~/videos/../.."), /\.\./);
+
+  // `show` hands the real folder to xdg-open (a stand-in here).
+  const bin = join(root, "bin");
+  const log = join(root, "opened.txt");
+  await mkdir(bin);
+  await writeFile(join(bin, "xdg-open"), `#!/bin/sh\nprintf %s "$1" > "${log}"\n`);
+  await chmod(join(bin, "xdg-open"), 0o755);
+  const shown = createFolders(realHost(home, { PATH: `${bin}:${process.env.PATH}` }));
+  await shown.show("~/videos/renders");
+  for (let i = 0; i < 50; i++) {
+    try {
+      if ((await readFile(log, "utf8")) === renders) break;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.equal(await readFile(log, "utf8"), renders);
+  await assert.rejects(shown.show(join(root, "outside")), /inside your home/);
+});
+
+test("folder panel renders, and folder targets register", () => {
+  const views = createViews(React, {}, () => {}, { drafts: createDrafts(null), folders: { list: () => new Promise(() => {}) } });
+  const html = renderToStaticMarkup(React.createElement(views.FolderPanel, { target: folderTargetFor("~/v/renders/") }));
+  assert.match(html, /Opening…/);
+  assert.match(html, /Open in file manager/);
+  assert.match(html, /data-local-files="folder"/);
+
+  const { ctx, reg } = fakeCtx();
+  apply(ctx, { files: {}, folders: {} });
+  const folder = reg.panels.find((p) => p.id === "folder");
+  assert.equal(folder.keepOpen, true);
+  assert.equal(folder.matches(folderTargetFor("~/v/renders/")), true);
+  assert.equal(folder.matches(folderTargetFor("v/renders")), false);
+  assert.equal(folder.matches(targetFor("~/a.md")), false);
+  const Link = reg.inline[0].component;
+  let opened = null;
+  const link = renderToStaticMarkup(React.createElement(Link, { text: "~/v/renders/", canOpen: (t) => t === folderTargetFor("~/v/renders/"), open: (t) => (opened = t) }));
+  assert.match(link, /title="Open renders\/ beside the chat"/);
+  const Chips = reg.accessories[0].component;
+  const chips = renderToStaticMarkup(
+    React.createElement(Chips, { message: { content: "`/home/lucas/v/renders`" }, canOpen: () => true, open: () => true }),
+  );
+  assert.match(chips, /Open renders\//);
 });
