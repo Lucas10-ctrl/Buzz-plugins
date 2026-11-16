@@ -1,0 +1,28 @@
+{
+  "id": "lucas.local-files",
+  "name": "Local Files",
+  "apiVersion": 1,
+  "description": "Click a local Markdown path in a message to read it beside the chat, and edit and save it there. Only .md, .markdown and .txt files in your home folder.",
+  "discovery": {
+    "category": "productivity",
+    "tags": [
+      "Files",
+      "Markdown",
+      "Editor"
+    ]
+  },
+  "host": {
+    "files": true,
+    "processes": [
+      {
+        "id": "files",
+        "program": "sh",
+        "args": [
+          "-c",
+          "p=\"$2\"\ncase \"$p\" in \"~/\"*) p=\"$HOME/${p#\"~/\"}\";; /*) ;; *) exit 2;; esac\ncase $(printf %s \"$p\" | tr A-Z a-z) in *.md|*.markdown|*.txt) ;; *) exit 3;; esac\nh=$(cd -P -- \"$HOME\" && pwd -P) || exit 4\nd=$(cd -P -- \"$(dirname -- \"$p\")\" 2>/dev/null && pwd -P) || exit 5\nf=\"$d/$(basename -- \"$p\")\"\ncase \"$f\" in \"$h\"/*) ;; *) exit 6;; esac\n[ -L \"$f\" ] && exit 7\n[ -f \"$f\" ] || exit 5\nif [ \"$1\" = write ]; then\n[ -w \"$f\" ] || exit 8\nt=$(mktemp \"$d/.local-files.XXXXXX\") || exit 9\nif cat >\"$t\" && cat \"$t\" >\"$f\"; then rm -f \"$t\"; else rm -f \"$t\"; exit 9; fi\nfi\nprintf %s \"$f\"",
+          "local-files"
+        ]
+      }
+    ]
+  }
+}
