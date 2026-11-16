@@ -181,6 +181,20 @@ test("manifest runs the same helper script", () => {
   assert.equal(manifest.host.files, true);
 });
 
+test("manifest passes Buzz's host process limits", () => {
+  // crates/plugin-manager valid_program: program [A-Za-z0-9._-]{1,80},
+  // at most 16 args, each at most 1024 bytes without NUL.
+  for (const proc of manifest.host.processes) {
+    assert.match(proc.program, /^[A-Za-z0-9._-]{1,80}$/);
+    assert.ok(proc.args.length <= 16);
+    for (const arg of proc.args) {
+      assert.ok(Buffer.byteLength(arg) <= 1024, `arg is ${Buffer.byteLength(arg)} bytes`);
+      assert.ok(!arg.includes("\0"));
+    }
+  }
+  assert.ok(manifest.description.length <= 280);
+});
+
 /** A host whose spawn runs the manifest's process for real, with HOME set. */
 function realHost(home) {
   return {

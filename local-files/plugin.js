@@ -74,27 +74,38 @@ export function pathProblem(path) {
 // ---- Native access ------------------------------------------------------
 //
 // Runs as `sh -c SCRIPT local-files <mode> <path>`. `resolve` prints the real
-// path; `write` saves stdin there first. Errors go to stderr, one line.
+// path; `write` saves stdin there first. Failures exit with a code that
+// HELPER_ERRORS explains. Buzz caps each declared argument at 1024 bytes, so
+// the script stays terse and the messages live here.
 
 export const SCRIPT = [
-  "set -u",
-  'mode="$1"; p="$2"',
-  'case "$p" in "~/"*) p="$HOME/${p#"~/"}" ;; /*) ;; *) echo "Use a full path that starts with / or ~/." >&2; exit 2 ;; esac',
-  "lower=$(printf '%s' \"$p\" | tr 'A-Z' 'a-z')",
-  'case "$lower" in *.md|*.markdown|*.txt) ;; *) echo "Only .md, .markdown and .txt files can be opened." >&2; exit 3 ;; esac',
-  'home=$(cd -P -- "$HOME" 2>/dev/null && pwd -P) || { echo "Your home folder could not be found." >&2; exit 4; }',
-  'dir=$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P) || { echo "No such file: $2" >&2; exit 5; }',
-  'f="$dir/$(basename -- "$p")"',
-  'case "$f" in "$home"/*) ;; *) echo "Only files inside your home folder are allowed." >&2; exit 6 ;; esac',
-  'if [ -L "$f" ]; then echo "Linked files are not allowed." >&2; exit 7; fi',
-  'if [ ! -f "$f" ]; then echo "No such file: $2" >&2; exit 5; fi',
-  'if [ "$mode" = write ]; then',
-  '  if [ ! -w "$f" ]; then echo "This file is read-only." >&2; exit 8; fi',
-  '  tmp=$(mktemp "$dir/.local-files.XXXXXX") || { echo "Could not save next to the file." >&2; exit 9; }',
-  '  if cat > "$tmp" && cat "$tmp" > "$f"; then rm -f "$tmp"; else rm -f "$tmp"; echo "Could not save the file." >&2; exit 9; fi',
-  "fi",
-  "printf '%s' \"$f\"",
+  'p="$2"',
+  'case "$p" in "~/"*) p="$HOME/${p#"~/"}";; /*) ;; *) exit 2;; esac',
+  "case $(printf %s \"$p\" | tr A-Z a-z) in *.md|*.markdown|*.txt) ;; *) exit 3;; esac",
+  'h=$(cd -P -- "$HOME" && pwd -P) || exit 4',
+  'd=$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P) || exit 5',
+  'f="$d/$(basename -- "$p")"',
+  'case "$f" in "$h"/*) ;; *) exit 6;; esac',
+  '[ -L "$f" ] && exit 7',
+  '[ -f "$f" ] || exit 5',
+  'if [ "$1" = write ]; then',
+  '[ -w "$f" ] || exit 8',
+  't=$(mktemp "$d/.local-files.XXXXXX") || exit 9',
+  'if cat >"$t" && cat "$t" >"$f"; then rm -f "$t"; else rm -f "$t"; exit 9; fi',
+  'fi',
+  "printf %s \"$f\"",
 ].join("\n");
+
+export const HELPER_ERRORS = {
+  2: "Use a full path that starts with / or ~/.",
+  3: "Only .md, .markdown and .txt files can be opened.",
+  4: "Your home folder could not be found.",
+  5: "No such file.",
+  6: "Only files inside your home folder are allowed.",
+  7: "Linked files are not allowed.",
+  8: "This file is read-only.",
+  9: "Could not save the file.",
+};
 
 const firstLine = (s) => String(s ?? "").trim().split("\n")[0];
 
@@ -112,7 +123,7 @@ export function createFiles(host) {
     await proc.end(input ?? "");
     const code = await proc.exited;
     await new Promise((r) => setTimeout(r, 0));
-    if (code !== 0) throw new Error(firstLine(err) || "The file helper failed.");
+    if (code !== 0) throw new Error(HELPER_ERRORS[code] || firstLine(err) || "The file helper failed.");
     return out.trim();
   }
   return {
