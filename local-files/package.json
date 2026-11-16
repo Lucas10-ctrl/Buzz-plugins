@@ -1,7 +1,7 @@
 {
   "name": "buzz-local-files",
-  "version": "0.2.0",
-  "description": "Buzz plugin: open and edit local Markdown files beside the chat",
+  "version": "0.3.0",
+  "description": "Buzz plugin: open local Markdown, image and video files beside the chat",
   "scripts": {
     "build": "node build.mjs",
     "test": "node build.mjs && node --test plugin.test.mjs"

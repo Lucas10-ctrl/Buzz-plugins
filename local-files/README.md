@@ -1,6 +1,6 @@
 # Local Files
 
-Read and edit local Markdown files beside the chat.
+Read and edit local Markdown files, and view local images and videos, beside the chat.
 
 When a message contains a path to a Markdown file on your computer, such as `~/Documents/brief.md` or `/home/you/notes/plan.md`, the path becomes a link. Click it and the file opens in a tab in the side pane. The tab stays open until you close it.
 
@@ -12,11 +12,17 @@ The tab is one writing surface, in the style of Omawrite: you just type. Heading
 - **Unsaved edits survive** closing the tab or a crash; they come back the next time you open the file, as long as the file on disk hasn't changed since.
 - `.txt` files open as plain text.
 
-Paths in plain text become links. Paths written inside `code` or a code block get an **Open file.md** button under the message instead, because Buzz doesn't let plugins change code.
+## Images and videos
+
+Paths to images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`, `.svg`) and videos (`.mp4`, `.m4v`, `.webm`, `.mov`) link the same way and open in a viewer tab: the picture fits the pane, and videos play with the usual controls. **Reload** loads the file again; images also refresh by themselves when the file changes. These files are never written. Buzz reads at most 50 MB per file, so bigger videos show a message instead. Whether a video plays depends on the formats the Buzz window supports (`.mov` often won't on Linux).
+
+## Where paths are found
+
+Paths in plain text become links. Paths written inside `code` or a code block get an **Open file.md** button under the message instead, because Buzz doesn't let plugins change code. The same goes for paths used as a Markdown image or link, such as `![storyboard](/home/you/board.jpg)`.
 
 ## Safety
 
-- Only `.md`, `.markdown` and `.txt` files, and only inside your home folder.
+- Only Markdown, text, image and video files (the extensions above), and only inside your home folder. Only `.md`, `.markdown` and `.txt` can be saved.
 - Linked files (symlinks), and folders that link outside your home, are refused.
 - A missing or refused file shows a clear message in the tab.
 
