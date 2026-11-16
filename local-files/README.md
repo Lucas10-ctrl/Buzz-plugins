@@ -2,11 +2,15 @@
 
 Read and edit local Markdown files beside the chat.
 
-When a message contains a path to a Markdown file on your computer, such as `~/Documents/brief.md` or `/home/you/notes/plan.md`, the path becomes a link. Click it and the file opens in a tab in the side pane, rendered as Markdown: headings, lists, bold, code blocks and tables. The tab stays open until you close it.
+When a message contains a path to a Markdown file on your computer, such as `~/Documents/brief.md` or `/home/you/notes/plan.md`, the path becomes a link. Click it and the file opens in a tab in the side pane. The tab stays open until you close it.
 
-- **Refresh** reads the file again from disk.
-- **Edit** shows the raw text. **Save** (or Ctrl/Cmd+S) writes it back and returns to the rendered view. **Cancel** throws your changes away.
-- If the file changed on disk after you opened it, Save warns you first. You can overwrite it, keep editing, or discard your edits and load the disk version.
+The tab is one writing surface, in the style of Omawrite: you just type. Headings show large, bold shows bold, and the Markdown markers (`#`, `**`, backticks, list numbers) stay in the text but fade into the background, so the file on disk is exactly what you wrote.
+
+- **Ctrl/Cmd+S** or **Save** writes the file. **Autosave** (off by default) saves a moment after you stop typing.
+- **Ctrl/Cmd+B / I / K**: bold, italic, link. **Ctrl/Cmd+F** or **Find**: find and replace. Undo and redo work as usual.
+- **The file is watched.** If an agent or another app saves it while nothing is unsaved here, the new version loads in by itself. If you have unsaved edits, a warning lets you keep yours, use the disk version, or decide later.
+- **Unsaved edits survive** closing the tab or a crash; they come back the next time you open the file, as long as the file on disk hasn't changed since.
+- `.txt` files open as plain text.
 
 Paths in plain text become links. Paths written inside `code` or a code block get an **Open file.md** button under the message instead, because Buzz doesn't let plugins change code.
 
@@ -29,10 +33,14 @@ Download or clone this repo, then in Buzz choose **Settings → Plugins → Mana
 
 Needs Buzz desktop on macOS or Linux. Windows has no `sh`, so files won't open there.
 
-## Tests
+## Build and tests
+
+`plugin.js` is generated: it bundles `src/` with CodeMirror (MIT, see `THIRD-PARTY-NOTICES.md`). Edit `src/`, then:
 
 ```sh
-node --test local-files/plugin.test.mjs
+cd local-files
+npm install
+npm test        # builds plugin.js, then runs the tests
 ```
 
 The tests run the real `sh` script against a temporary home folder. React comes from a sibling Buzz checkout, or set `REACT_DIR`.
@@ -41,4 +49,4 @@ The tests run the real `sh` script against a temporary home folder. React comes 
 
 - Paths with spaces aren't detected.
 - Links inside an open file to other local files aren't clickable.
-- No live reload; use Refresh.
+- Markers are dimmed, not hidden. Tables and images show as their Markdown text.

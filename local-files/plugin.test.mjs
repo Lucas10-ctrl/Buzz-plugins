@@ -1,4 +1,5 @@
-// Run: node --test local-files/plugin.test.mjs
+// Run: npm test (from local-files/, after npm install), or
+// node --test local-files/plugin.test.mjs against the committed bundle.
 // React comes from a sibling Buzz checkout, or set REACT_DIR to a folder whose
 // node_modules has react and react-dom.
 import assert from "node:assert/strict";
@@ -12,15 +13,16 @@ import {
   SCRIPT,
   apply,
   createFiles,
+  createDrafts,
   createViews,
   findCodePaths,
   findPaths,
-  parseBlocks,
-  parseInline,
   pathOf,
   pathProblem,
   targetFor,
 } from "./plugin.js";
+import { linkSpec, toggleWrapSpec } from "./src/editor.js";
+import { EditorSelection, EditorState } from "@codemirror/state";
 
 const require = createRequire(
   join(process.env.REACT_DIR ?? join(homedir(), "Documents/GitHub/buzz-editor-lab"), "x.js"),
@@ -67,61 +69,51 @@ test("targets round-trip and safety rules", () => {
   assert.match(pathProblem("~/x/../a.md"), /\.\./);
 });
 
-// ---- Markdown ---------------------------------------------------------------
+// ---- Editor commands ------------------------------------------------------
 
-test("parses headings, lists, tables, code and quotes", () => {
-  const md = [
-    "# Title",
-    "Line one",
-    "line two",
-    "",
-    "- a",
-    "  - nested",
-    "- [x] done",
-    "",
-    "1. first",
-    "   *Visual: under it*",
-    "2. second",
-    "",
-    "| A | B |",
-    "| :- | -: |",
-    "| 1 | `x|y` |",
-    "",
-    "```js",
-    "const a = 1;",
-    "```",
-    "> quoted",
-    "---",
-  ].join("\n");
-  const blocks = parseBlocks(md);
-  assert.deepEqual(blocks.map((b) => b.type), ["heading", "paragraph", "list", "list", "table", "code", "quote", "rule"]);
-  assert.equal(blocks[1].text, "Line one\nline two");
-  assert.equal(blocks[2].items[0].children[0].items[0].text, "nested");
-  assert.equal(blocks[2].items[1].task, true);
-  assert.equal(blocks[3].items[0].text, "first\n*Visual: under it*");
-  assert.deepEqual(blocks[4].align, ["left", "right"]);
-  assert.deepEqual(blocks[4].rows[0], ["1", "`x|y`"]);
-  assert.equal(blocks[5].lang, "js");
+const stateWith = (doc, from, to = from) => EditorState.create({ doc, selection: EditorSelection.single(from, to) });
+const applySpec = (state, spec) => state.update(spec).state;
+
+test("Ctrl+B wraps, and unwraps, the selection", () => {
+  let s = applySpec(stateWith("make this bold", 5, 9), toggleWrapSpec(stateWith("make this bold", 5, 9), "**"));
+  assert.equal(s.doc.toString(), "make **this** bold");
+  assert.equal(s.sliceDoc(s.selection.main.from, s.selection.main.to), "this");
+  s = applySpec(s, toggleWrapSpec(s, "**"));
+  assert.equal(s.doc.toString(), "make this bold");
 });
 
-test("parses inline marks", () => {
-  const nodes = parseInline("**bold** and *it* and ~~gone~~ and `code` and [link](https://a.b) snake_case_name");
-  assert.deepEqual(
-    nodes.map((n) => n.type),
-    ["strong", "text", "em", "text", "del", "text", "code", "text", "link", "text"],
-  );
-  assert.equal(nodes.at(-1).value, " snake_case_name");
+test("an empty selection gets a pair with the cursor inside", () => {
+  const start = stateWith("ab", 1);
+  const s = applySpec(start, toggleWrapSpec(start, "*"));
+  assert.equal(s.doc.toString(), "a**b");
+  assert.equal(s.selection.main.head, 2);
 });
 
-test("renders Markdown without raw HTML", () => {
-  const { Rendered } = createViews(React, {}, () => {});
-  const html = renderToStaticMarkup(
-    React.createElement(Rendered, { text: "# Hi\n\n<script>alert(1)</script> **b** [x](javascript:alert(1))" }),
-  );
-  assert.match(html, /<h1[^>]*>Hi<\/h1>/);
-  assert.match(html, /<strong>b<\/strong>/);
-  assert.doesNotMatch(html, /<script>/);
-  assert.doesNotMatch(html, /javascript:/);
+test("Ctrl+K makes a link with the url selected", () => {
+  const start = stateWith("see docs here", 4, 8);
+  const s = applySpec(start, linkSpec(start));
+  assert.equal(s.doc.toString(), "see [docs](url) here");
+  assert.equal(s.sliceDoc(s.selection.main.from, s.selection.main.to), "url");
+});
+
+test("drafts round-trip and tolerate junk", () => {
+  const map = new Map();
+  const storage = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, v), removeItem: (k) => map.delete(k) };
+  const drafts = createDrafts(storage);
+  assert.equal(drafts.get("~/a.md"), null);
+  drafts.set("~/a.md", "base", "mine");
+  assert.deepEqual(drafts.get("~/a.md"), { base: "base", text: "mine" });
+  drafts.clear("~/a.md");
+  assert.equal(drafts.get("~/a.md"), null);
+  map.set("lucas.local-files.draft:~/b.md", "{not json");
+  assert.equal(drafts.get("~/b.md"), null);
+});
+
+test("panel shows Opening… before the file is read", () => {
+  const { FilePanel } = createViews(React, { read: () => new Promise(() => {}) }, () => {}, { drafts: createDrafts(null) });
+  const html = renderToStaticMarkup(React.createElement(FilePanel, { target: targetFor("~/a.md") }));
+  assert.match(html, /Opening…/);
+  assert.match(html, /data-local-files="panel"/);
 });
 
 // ---- Registration -----------------------------------------------------------
