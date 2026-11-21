@@ -19,8 +19,11 @@ const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const STDIO = process.argv.includes('--stdio');
+// --once: publish whatever is due, then exit. A systemd timer runs this so
+// posts go out while Buzz is closed; it does nothing when an engine is running.
+const ONCE = process.argv.includes('--once');
 const HOME = process.env.SOCIAL_POSTER_HOME || path.join(os.homedir(), '.local', 'share', 'social-poster');
 const UPLOADS = path.join(HOME, 'uploads');
 fs.mkdirSync(UPLOADS, { recursive: true, mode: 0o700 });
@@ -100,7 +103,14 @@ const now = () => Date.now();
 if (!getSetting('secret')) setSetting('secret', crypto.randomBytes(32).toString('hex'));
 if (!getSetting('apiToken')) setSetting('apiToken', crypto.randomBytes(24).toString('hex'));
 const PORT = Number(process.env.SOCIAL_POSTER_PORT || getSetting('port', 47321));
-const callbackBase = () => String(getSetting('callbackBase', `http://127.0.0.1:${PORT}`)).replace(/\/+$/, '');
+const localBase = () => `http://127.0.0.1:${PORT}`;
+// Where networks send you back after you sign in. Several big networks
+// (TikTok, Meta, LinkedIn) only accept https addresses, so the default is a
+// static page in the Buzz-plugins repo's GitHub Pages (relay/404.html) that
+// forwards the browser straight to this engine on 127.0.0.1. Nothing is stored
+// or run there; it is one redirect in your own browser.
+const RELAY = 'https://lucas10-ctrl.github.io/Buzz-plugins/connect';
+const callbackBase = () => String(getSetting('callbackBase', `${RELAY}/${PORT}`)).replace(/\/+$/, '');
 
 // ── Developer keys each network needs (from each Postiz connector) ─────────
 
@@ -245,7 +255,6 @@ const publicAccount = (a) => ({
   connectedAt: new Date(a.created_at).toISOString(),
 });
 async function listAccounts() {
-  await cloud.syncAccounts().catch((err) => log('[postiz]', err.message));
   await fillAvatars().catch(() => {});
   return db.prepare('SELECT * FROM accounts ORDER BY provider, name').all().map(publicAccount);
 }
@@ -367,13 +376,6 @@ async function selectPage({ account, page }) {
 
 async function removeAccount({ account }) {
   const a = accountRow(account);
-  if (a.via === 'postiz') {
-    for (const r of db.prepare("SELECT * FROM posts WHERE account_id=? AND status='scheduled' AND remote_group IS NOT NULL").all(a.id)) {
-      await cloud.removeRemote(r.remote_group);
-      db.prepare('UPDATE posts SET remote_group=NULL WHERE id=?').run(r.id);
-    }
-    cloud.hide({ account: a.id });
-  }
   db.prepare("UPDATE posts SET status='draft', error='Account removed', updated_at=? WHERE account_id=? AND status='scheduled'").run(now(), a.id);
   db.prepare('DELETE FROM accounts WHERE id = ?').run(a.id);
   changed('accounts');
@@ -399,20 +401,28 @@ const { createPosts } = require('./posts.cjs');
 const { createTunnel } = require('./tunnel.cjs');
 const { createNotion } = require('./notion.cjs');
 const { createNotionContent } = require('./notion-content.cjs');
-const { createCloud } = require('./cloud.cjs');
 const { CAPS, capsOf } = require('./caps.cjs');
 
 const tunnel = createTunnel({ home: HOME, port: PORT, log });
-const cloud = createCloud({ db, getSetting, setSetting, callbackBase, openInBrowser: (u) => openInBrowser(u), newId, now, changed, log, uploads: UPLOADS });
-const media = createMedia({ db, uploads: UPLOADS, callbackBase, newId, changed, tunnel });
+const media = createMedia({ db, uploads: UPLOADS, callbackBase: localBase, newId, changed, tunnel });
 let notionContent;
 const posts = createPosts({
-  db, P, provider, accountRow, integrationOf, refreshAccount, media, newId, now, changed, emit, log, cloud,
+  db, P, provider, accountRow, integrationOf, refreshAccount, media, newId, now, changed, emit, log,
   onGroupState: (group, state, rows) => void notionContent?.sync(group, state, rows),
 });
-const notion = createNotion({ getSetting, setSetting, callbackBase, openInBrowser: (u) => openInBrowser(u), log, onChange: () => changed('notion') });
+const notion = createNotion({ getSetting, setSetting, callbackBase: localBase, openInBrowser: (u) => openInBrowser(u), log, onChange: () => changed('notion') });
 notionContent = createNotionContent({ notion, db, media, posts, log, changed });
 const errorText = posts.errorText;
+
+// Version 0.3 could connect channels through Postiz Cloud. Social Poster now
+// runs everything on this computer, so those channels and their stored Postiz
+// login are removed; their scheduled posts go back to drafts.
+const hasVia = db.prepare('PRAGMA table_info(accounts)').all().some((c) => c.name === 'via');
+for (const a of hasVia ? db.prepare("SELECT id FROM accounts WHERE via='postiz'").all() : []) {
+  db.prepare("UPDATE posts SET status='draft', error='This channel was connected through Postiz Cloud. Connect it again under Channels.', updated_at=? WHERE account_id=? AND status IN ('scheduled','publishing')").run(now(), a.id);
+  db.prepare('DELETE FROM accounts WHERE id=?').run(a.id);
+}
+db.exec("DELETE FROM settings WHERE key IN ('postizCloud','postizHidden'); DROP TABLE IF EXISTS cloud_media;");
 const tick = posts.tick;
 
 /** Options for a lookup field (Pinterest boards, Discord channels, ...). */
@@ -420,7 +430,7 @@ async function accountOptions({ account, method, params }) {
   const a = accountRow(account);
   const p = provider(a.provider);
   if (!/^[a-zA-Z]+$/.test(String(method)) || typeof p[method] !== 'function') throw new Error(`${p.name} has no "${method}" list`);
-  const list = a.via === 'postiz' ? await cloud.options({ account: a, method, params }) : await p[method](a.token, params || {}, a.internal_id, integrationOf(a));
+  const list = await p[method](a.token, params || {}, a.internal_id, integrationOf(a));
   const arr = Array.isArray(list) ? list : list?.results || list?.data || [];
   return arr.map((x) => ({
     value: String(x.id ?? x.value ?? x.name ?? x.subreddit ?? ''),
@@ -478,7 +488,7 @@ function status() {
 
 function setCallbackBase({ url }) {
   const v = String(url || '').trim().replace(/\/+$/, '');
-  if (v && !/^https?:\/\/[^/]+$/.test(v)) throw new Error('Use an address like http://127.0.0.1:47321 or https://example.ngrok.app');
+  if (v && !/^https?:\/\/[^/\s]+(\/[^\s?#]*)?$/.test(v)) throw new Error('Use an address like http://127.0.0.1:47321 or https://example.ngrok.app');
   if (v) setSetting('callbackBase', v); else db.prepare("DELETE FROM settings WHERE key='callbackBase'").run();
   applyEnvironment();
   changed('providers');
@@ -518,12 +528,6 @@ const METHODS = {
   'posts.get': ({ post }) => posts.list({ limit: 100000 }).find((x) => x.id === post || x.group === post) || (() => { throw new Error(`No post with id ${post}`); })(),
   'posts.cancel': (p) => posts.unschedule(p),
   'posts.retry': (p) => posts.retry(p),
-  // Postiz Cloud (one-click sign-in for the big networks)
-  'cloud.status': () => cloud.status(),
-  'cloud.signIn': (p) => cloud.signIn(p),
-  'cloud.signOut': () => cloud.signOut(),
-  'cloud.connect': async (p) => { try { return await cloud.connectChannel(p); } catch (err) { if (err.upgradeUrl) return { error: err.message, upgradeUrl: err.upgradeUrl }; throw err; } },
-  'cloud.sync': async () => { await cloud.syncAccounts({ force: true }); await cloud.syncPosts((g) => posts.settle(g)); return { ok: true }; },
   // Notion
   'notion.status': () => notion.status(),
   'notion.connect': () => notion.connect(),
@@ -608,12 +612,6 @@ const server = http.createServer(async (req, res) => {
         return send(res, 400, page('Notion is not connected', errorText(err), false), 'text/html');
       }
     }
-    if (req.method === 'GET' && url.pathname === '/postiz/connected') {
-      await cloud.syncAccounts({ force: true }).catch(() => {});
-      const failed = url.searchParams.get('error') || url.searchParams.get('status') === 'error';
-      return send(res, failed ? 400 : 200, failed ? page('Not connected', String(url.searchParams.get('error') || 'The network did not finish connecting. Try again from Social Poster.'), false)
-        : page('Channel connected', 'The channel now shows in Social Poster under Channels.'), 'text/html');
-    }
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, app: 'social-poster', version: VERSION, pid: process.pid });
     const cb = url.pathname.match(/^\/integrations\/social\/([a-z0-9-]+)\/?$/);
     if (req.method === 'GET' && cb) return await handleCallback(cb[1], url.searchParams, res);
@@ -679,6 +677,13 @@ process.on('SIGINT', () => shutdown(0));
 process.on('unhandledRejection', (err) => log('[unhandled]', err?.stack || err));
 
 (async () => {
+  if (ONCE) {
+    // Buzz's engine (or a standalone one) is running and publishes on its own.
+    const up = await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok).catch(() => false);
+    if (up) return process.exit(0);
+    const due = db.prepare("SELECT COUNT(*) AS n FROM posts WHERE status='scheduled' AND publish_at <= ?").get(now()).n;
+    if (!due) return process.exit(0);
+  }
   try {
     await listen();
   } catch (err) {
@@ -687,8 +692,12 @@ process.on('unhandledRejection', (err) => log('[unhandled]', err?.stack || err))
     return shutdown(1);
   }
   writeApiFile();
+  if (ONCE) {
+    await tick();
+    log('Social Poster: background check done');
+    return shutdown(0);
+  }
   timer = setInterval(tick, 15_000);
-  setInterval(() => { void cloud.syncPosts((g) => posts.settle(g)).catch((err) => log('[postiz sync]', err.message)); }, 60_000);
   setImmediate(tick);
   emit('ready', { status: status() });
   log(`Social Poster engine ${VERSION} on http://127.0.0.1:${PORT} (data in ${HOME})`);

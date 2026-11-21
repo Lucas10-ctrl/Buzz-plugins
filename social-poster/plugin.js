@@ -891,7 +891,7 @@ function createApp(React, engine) {
 
   // ── Channels ──
   const DEV_PORTALS = {
-    x: "https://developer.x.com/en/portal/dashboard", linkedin: "https://www.linkedin.com/developers/apps", "linkedin-page": "https://www.linkedin.com/developers/apps",
+    x: "https://console.x.com", linkedin: "https://www.linkedin.com/developers/apps", "linkedin-page": "https://www.linkedin.com/developers/apps",
     facebook: "https://developers.facebook.com/apps", instagram: "https://developers.facebook.com/apps", "instagram-standalone": "https://developers.facebook.com/apps", threads: "https://developers.facebook.com/apps",
     youtube: "https://console.cloud.google.com/apis/credentials", gmb: "https://console.cloud.google.com/apis/credentials", reddit: "https://www.reddit.com/prefs/apps",
     tiktok: "https://developers.tiktok.com/apps", "tiktok-business": "https://business-api.tiktok.com/portal/apps", pinterest: "https://developers.pinterest.com/apps/",
@@ -906,60 +906,74 @@ function createApp(React, engine) {
     return h(React.Fragment, null,
       h("div", { style: S.head }, h("h1", { style: S.h1 }, "Channels")),
       h("div", { style: S.body }, h("div", { style: { display: "flex", flexDirection: "column", gap: 16, maxWidth: 860 } },
-        h(MainChannels, { version, accounts, pickOwnApp: setNetwork }),
+        h(MainChannels, { accounts, providers }),
         h("section", { style: S.card }, h("h2", { style: S.h2 }, "Connected"), error ? h("p", { style: S.error }, error) : null,
           accounts.length ? accounts.map((a) => h("div", { key: a.id, style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid rgba(127,127,127,0.15)" } },
-            h(Avatar, { account: a, size: 38 }), h("div", { style: { flex: 1 } }, h("strong", null, a.name), h("div", { style: S.hint }, `${providers.find((p) => p.identifier === a.network)?.name || a.network}${a.username ? ` · @${String(a.username).replace(/^@/, "")}` : ""}${a.via === "postiz" ? " · through Postiz" : ""}`)),
+            h(Avatar, { account: a, size: 38 }), h("div", { style: { flex: 1 } }, h("strong", null, a.name), h("div", { style: S.hint }, `${providers.find((p) => p.identifier === a.network)?.name || a.network}${a.username ? ` · @${String(a.username).replace(/^@/, "")}` : ""}`)),
             a.status === "needs_page" ? h(PagePicker, { account: a }) : null,
             a.status === "disconnected" ? h("button", { style: S.btn, onClick: () => setNetwork(a.network) }, "Reconnect") : null,
-            h("button", { style: S.ghost, onClick: () => { if (confirmed(a.via === "postiz" ? `Remove ${a.name} from Social Poster? It stays connected in Postiz. Its scheduled posts go back to drafts.` : `Remove ${a.name}? Its scheduled posts go back to drafts.`)) engine.call("accounts.remove", { account: a.id }).catch((e) => setError(errText(e))); } }, "Remove")))
+            h("button", { style: S.ghost, onClick: () => { if (confirmed(`Remove ${a.name}? Its scheduled posts go back to drafts.`)) engine.call("accounts.remove", { account: a.id }).catch((e) => setError(errText(e))); } }, "Remove")))
             : h("p", { style: S.hint }, "None yet. Pick a network below.")),
         h("section", { style: S.card }, h("h2", { style: S.h2 }, "Add a channel"),
           h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 } }, providers.map((p) =>
             h("button", { key: p.identifier, onClick: () => setNetwork(p.identifier), style: { ...S.btn, display: "flex", alignItems: "center", gap: 8, background: network === p.identifier ? "rgba(109,74,255,0.16)" : "transparent" } },
               h("span", { style: { width: 22, height: 22, flex: "0 0 22px", borderRadius: 6, background: net(p.identifier)[1], color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" } }, net(p.identifier)[0]),
               h("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, p.name)))),
-          info ? h(Connect, { key: info.identifier, info }) : null),
+          info ? h(Connect, { key: info.identifier, info, setup: SETUP[info.identifier] }) : null),
         h(Advanced, { version }))));
   }
+  // One-time developer-app notes for the main networks, shown above the steps.
+  const SETUP = {
+    youtube: ["Create a project, turn on \"YouTube Data API v3\", and set up the consent screen as External.",
+      "Set the consent screen to \"In production\". In testing mode Google signs you out every 7 days. When you sign in, Google warns that the app is not verified: click Advanced, then continue.",
+      "Create an OAuth client of the type \"Web application\".",
+      "Google keeps videos from a new app private until the app passes Google's free YouTube audit. Ask for the audit once your first upload works."],
+    x: ["X charges for every post made by an app: about 1.5 cents a post, or 20 cents if the post has a link. You buy credits in the X developer console first.",
+      "Under User authentication settings, turn on OAuth 1.0a with \"Read and write\" permission.",
+      "Copy the API Key and API Key Secret (the consumer keys)."],
+    facebook: ["Choose the app type \"Business\" and add the product \"Facebook Login for Business\".",
+      "Leave the app in Development mode. It can then post to the Facebook Pages and Instagram accounts you manage, with no review by Meta.",
+      "The same app and keys work for both Facebook and Instagram."],
+    instagram: ["Instagram connects through a Meta (Facebook) app. Your Instagram account must be a Business or Creator account linked to your Facebook Page.",
+      "Create a Meta app of the type \"Business\" and add \"Facebook Login for Business\". Leave it in Development mode: it can post to accounts you manage with no review.",
+      "The same app and keys work for both Facebook and Instagram."],
+    "linkedin-page": ["When you create the app, link it to your LinkedIn company page.",
+      "Under Products, add \"Sign In with LinkedIn using OpenID Connect\" and request \"Community Management API\". LinkedIn reviews that request, which can take a few days.",
+      "Once it is approved, copy the Client ID and Client Secret."],
+    tiktok: ["Add \"Login Kit\" and \"Content Posting API\". Turn on Direct Post.",
+      "Until TikTok audits your app, posts go up as private (\"Only me\"). Ask for the audit on the app page once your first post works.",
+      "Videos upload straight from this computer. Photo posts need a web address you have verified with TikTok, so start with videos."],
+  };
   const MAIN = [["youtube", "YouTube", ["youtube"]], ["x", "X (Twitter)", ["x"]], ["facebook", "Facebook Page", ["facebook"]],
     ["instagram", "Instagram", ["instagram", "instagram-standalone"]], ["linkedin-page", "LinkedIn Page", ["linkedin-page", "linkedin"]], ["tiktok", "TikTok", ["tiktok", "tiktok-business"]]];
-  function MainChannels({ version, accounts, pickOwnApp }) {
-    const st = useLoad("cloud.status", {}, [version]);
+  function MainChannels({ accounts, providers }) {
+    const [open, setOpen] = useState("");
     const [busy, setBusy] = useState("");
     const [msg, setMsg] = useState(null);
-    const [next, setNext] = useState(null);
-    const s = st.data;
-    async function connect(network) {
-      setMsg(null); setBusy(network);
-      try {
-        if (!s?.connected) {
-          const r = await engine.call("cloud.signIn", {}, 60000);
-          if (!r.connected) { setNext(network); setMsg({ ok: true, text: `Approve Social Poster in the Postiz page that opened in your browser (code ${r.code}). This channel's sign-in opens right after.`, url: r.url }); return; }
-        }
-        const r = await engine.call("cloud.connect", { network }, 60000);
-        setMsg(r.error ? { ok: false, text: r.error, upgradeUrl: r.upgradeUrl, network } : { ok: true, text: r.message, url: r.url });
-      } catch (e) { setMsg({ ok: false, text: errText(e) }); } finally { setBusy(""); }
+    const info = providers.find((p) => p.identifier === open);
+    async function connect(id) {
+      const p = providers.find((x) => x.identifier === id);
+      setMsg(null);
+      if (!p?.keysReady) { setOpen(open === id ? "" : id); return; }
+      setOpen(""); setBusy(id);
+      try { const r = await engine.call("accounts.connect", { provider: id }); setMsg({ ok: true, text: r.message, url: r.url }); }
+      catch (e) { setMsg({ ok: false, text: errText(e) }); } finally { setBusy(""); }
     }
-    useEffect(() => { if (s?.connected && next) { const n = next; setNext(null); void connect(n); } }, [s?.connected, next]);
     return h("section", { style: S.card },
-      h("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, h("h2", { style: { ...S.h2, flex: 1 } }, "Main channels: connect with one click"),
-        s?.connected ? h("span", { style: S.ok }, "✓ Signed in to Postiz") : null,
-        s?.connected ? h("button", { style: S.ghost, onClick: () => { if (confirmed("Sign out of Postiz? Channels connected through Postiz are removed here and their scheduled posts go back to drafts.")) void engine.call("cloud.signOut"); } }, "Sign out") : null),
-      h("p", { style: { margin: 0 } }, "These networks only let approved apps post. Social Poster uses your Postiz account, which already has approved apps, so you just sign in to the network. Posts on these channels are sent by Postiz at their time, even when Buzz is closed."),
+      h("h2", { style: S.h2 }, "Main channels"),
+      h("p", { style: { margin: 0 } }, "Everything runs on this computer. Each network needs its own free developer app once. After that, Connect opens the network's sign-in page and the channel appears here."),
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 } }, MAIN.map(([id, name, nets]) => {
         const mine = accounts.filter((a) => nets.includes(a.network));
+        const ready = providers.find((x) => x.identifier === id)?.keysReady;
         const [label, color] = net(id);
-        return h("div", { key: id, style: { display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, border: "1px solid rgba(127,127,127,0.25)" } },
+        return h("div", { key: id, style: { display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, border: `1px solid ${open === id ? ACCENT : "rgba(127,127,127,0.25)"}` } },
           h("span", { style: { width: 34, height: 34, flex: "0 0 34px", borderRadius: 9, background: color, color: "#fff", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" } }, label),
           h("div", { style: { flex: 1, minWidth: 0 } }, h("strong", null, name),
-            h("div", { style: { ...S.hint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, mine.length ? `✓ ${mine.map((a) => a.name).join(", ")}` : "Not connected")),
-          h("button", { style: mine.length ? S.btn : S.primary, disabled: !!busy, onClick: () => connect(id) }, busy === id ? "Opening…" : mine.length ? "Add another" : "Connect"));
+            h("div", { style: { ...S.hint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, mine.length ? `✓ ${mine.map((a) => a.name).join(", ")}` : ready ? "Ready to connect" : "Needs a developer app")),
+          h("button", { style: mine.length || !ready ? S.btn : S.primary, disabled: !!busy, onClick: () => connect(id) }, busy === id ? "Opening…" : !ready ? "Set up" : mine.length ? "Add another" : "Connect"));
       })),
-      msg ? h("p", { style: msg.ok ? S.ok : S.error }, msg.text,
-        msg.url ? h("span", null, " ", h(Link, { href: msg.url }, "Open it again")) : null,
-        msg.upgradeUrl ? h("span", null, " ", h(Link, { href: msg.upgradeUrl }, "Open Postiz billing"), " · ",
-          h("a", { href: "#", style: { color: ACCENT }, onClick: (e) => { e.preventDefault(); pickOwnApp(msg.network); } }, "or connect it with your own developer app")) : null) : null);
+      msg ? h("p", { style: msg.ok ? S.ok : S.error }, msg.text, msg.url ? h("span", null, " ", h(Link, { href: msg.url }, "Open the sign-in page again")) : null) : null,
+      info ? h(Connect, { key: info.identifier, info, setup: SETUP[info.identifier] }) : null);
   }
   function PagePicker({ account }) {
     const pages = useLoad("accounts.pages", { account: account.id }, [account.id]);
@@ -969,7 +983,7 @@ function createApp(React, engine) {
     return h("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", width: "100%" } }, h("span", null, "Post as which page?"), error ? h("span", { style: S.error }, error) : null,
       pages.data.map((p) => h("button", { key: p.id, style: S.btn, onClick: () => engine.call("accounts.selectPage", { account: account.id, page: p.id }).catch((e) => setError(errText(e))) }, p.name)));
   }
-  function Connect({ info }) {
+  function Connect({ info, setup }) {
     const keys = useLoad("keys.get", { provider: info.identifier }, [info.identifier]);
     const [values, setValues] = useState({});
     const [fields, setFields] = useState(() => Object.fromEntries(info.fields.map((f) => [f.key, f.defaultValue || ""])));
@@ -993,6 +1007,7 @@ function createApp(React, engine) {
         h("p", { style: { margin: 0 } }, `${info.name} only lets apps post after you create your own free developer app. Do this once:`),
         h("ol", { style: { margin: 0, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 6 } },
           h("li", null, "Open the ", DEV_PORTALS[info.identifier] ? h(Link, { href: DEV_PORTALS[info.identifier] }, `${info.name} developer page`) : `${info.name} developer page`, " and create an app."),
+          ...(setup || []).map((t, i) => h("li", { key: `s${i}` }, t)),
           h("li", null, "Where it asks for a callback or redirect address, paste:", h("div", { style: { ...S.code, marginTop: 6 } }, info.callbackUrl)),
           h("li", null, "Copy the app's keys into the boxes below and save.")),
         info.keys.map((k) => h("label", { key: k, style: S.label }, keyLabel(k), h("input", { style: S.input, type: /SECRET|TOKEN/.test(k) ? "password" : "text", autoComplete: "off", placeholder: keys.data?.[k] || (k === "MASTODON_URL" ? "https://mastodon.social" : ""), value: values[k] ?? "", onChange: (e) => setValues((v) => ({ ...v, [k]: e.target.value })) }))),

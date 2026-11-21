@@ -7,16 +7,7 @@
 const { capsOf, settingsFor, problems } = require('./caps.cjs');
 
 function createPosts(deps) {
-  const { db, P, provider, accountRow, integrationOf, refreshAccount, media, newId, now, changed, emit, log, onGroupState, cloud } = deps;
-
-  /** Takes back posts already handed to Postiz Cloud, before they are changed here. */
-  async function dropRemote(rows) {
-    for (const r of rows) {
-      if (!r.remote_group || r.status === 'published') continue;
-      await cloud.removeRemote(r.remote_group);
-      db.prepare('UPDATE posts SET remote_group=NULL WHERE id=?').run(r.id);
-    }
-  }
+  const { db, P, provider, accountRow, integrationOf, refreshAccount, media, newId, now, changed, emit, log, onGroupState } = deps;
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS post_groups (
@@ -125,7 +116,6 @@ function createPosts(deps) {
     const gid = group || newId();
     const existing = db.prepare('SELECT * FROM post_groups WHERE id = ?').get(gid);
     const kept = existing ? db.prepare("SELECT account_id FROM posts WHERE group_id = ? AND status IN ('published','publishing')").all(gid).map((r) => r.account_id) : [];
-    if (existing) await dropRemote(db.prepare("SELECT * FROM posts WHERE group_id = ? AND status NOT IN ('published','publishing')").all(gid));
     db.exec('BEGIN');
     try {
       if (existing) {
@@ -230,7 +220,6 @@ function createPosts(deps) {
   async function move({ group, at }) {
     const when = parseWhen(at);
     if (when < now() - 60_000) throw new Error('Pick a time in the future.');
-    await dropRemote(db.prepare("SELECT * FROM posts WHERE group_id=? AND status IN ('scheduled','failed')").all(group));
     const r = db.prepare("UPDATE posts SET publish_at=?, updated_at=? WHERE group_id=? AND status IN ('scheduled','draft','failed')").run(when, now(), group);
     db.prepare('UPDATE post_groups SET publish_at=?, updated_at=? WHERE id=?').run(when, now(), group);
     if (!r.changes) throw new Error('This post was already published, so it can’t be moved.');
@@ -248,7 +237,6 @@ function createPosts(deps) {
 
   async function remove({ group, post }) {
     const id = group || db.prepare('SELECT group_id FROM posts WHERE id = ?').get(post)?.group_id || post;
-    await dropRemote(db.prepare("SELECT * FROM posts WHERE group_id = ? AND status != 'publishing'").all(id));
     const r = db.prepare("DELETE FROM posts WHERE group_id = ? AND status != 'publishing'").run(id);
     if (!db.prepare('SELECT 1 FROM posts WHERE group_id = ?').get(id)) db.prepare('DELETE FROM post_groups WHERE id = ?').run(id);
     changed('posts');
@@ -257,7 +245,6 @@ function createPosts(deps) {
 
   /** Moves scheduled posts back to drafts, so they are not sent. */
   async function unschedule({ post }) {
-    await dropRemote(db.prepare("SELECT * FROM posts WHERE (id=? OR group_id=?) AND status='scheduled'").all(post, post));
     const r = db.prepare("UPDATE posts SET status='draft', updated_at=? WHERE (id=? OR group_id=?) AND status='scheduled'").run(now(), post, post);
     if (!r.changes) throw new Error('Nothing to cancel: only scheduled posts can be cancelled');
     changed('posts');
@@ -265,7 +252,6 @@ function createPosts(deps) {
   }
 
   async function retry({ post, at }) {
-    await dropRemote(db.prepare("SELECT * FROM posts WHERE (id=? OR group_id=?) AND status IN ('failed','draft')").all(post, post));
     const r = db.prepare("UPDATE posts SET status='scheduled', error=NULL, publish_at=?, updated_at=? WHERE (id=? OR group_id=?) AND status IN ('failed','draft')")
       .run(parseWhen(at), now(), post, post);
     if (!r.changes) throw new Error('Only failed or draft posts can be sent again');
@@ -303,35 +289,7 @@ function createPosts(deps) {
   };
   const isType = (err, type) => err?.type === type || err?.constructor?.name === ({ refresh_token: 'RefreshToken', disconnect: 'Disconnect', bad_body: 'BadBody' })[type];
 
-  /** Channels connected through Postiz Cloud: hand the post over with its time. */
-  async function pushToCloud(row, account) {
-    const g = db.prepare('SELECT * FROM post_groups WHERE id = ?').get(row.group_id);
-    try {
-      const c = capsOf(account.provider);
-      const items = c.maxMedia === 0 ? [] : J(row.media, []);
-      const info = items.map((m) => media.get(m.id));
-      const settings = settingsFor(account.provider, J(row.settings, {}));
-      // Postiz Cloud takes pictures and videos only: a PDF goes as its pages,
-      // and LinkedIn turns those pages back into a swipeable document.
-      if (c.pdf === 'document' && info.length === 1 && info[0].kind === 'pdf') {
-        settings.post_as_images_carousel = true;
-        settings.carousel_name = settings.carousel_name || info[0].name.replace(/\.pdf$/i, '');
-      }
-      const files = await media.forProvider(items, { mode: 'file', pdf: 'pages' });
-      db.prepare('UPDATE posts SET attempts=attempts+1 WHERE id=?').run(row.id);
-      await cloud.push({ row, account, files, settings, comments: c.comments ? J(g?.comments, []) : [] });
-    } catch (err) {
-      const message = errorText(err);
-      log(`[postiz ${row.id}]`, message);
-      db.prepare("UPDATE posts SET status='failed', error=?, updated_at=? WHERE id=?").run(`Postiz Cloud: ${message}`, now(), row.id);
-      emit('failed', { post: publicRow({ ...db.prepare('SELECT * FROM posts WHERE id=?').get(row.id), account_name: account.name, network: account.provider }) });
-    }
-    changed('posts');
-  }
-
   async function publish(row) {
-    const viaCloud = db.prepare("SELECT * FROM accounts WHERE id = ? AND via = 'postiz'").get(row.account_id);
-    if (viaCloud) return pushToCloud(row, viaCloud);
     db.prepare("UPDATE posts SET status='publishing', attempts=attempts+1, updated_at=? WHERE id=?").run(now(), row.id);
     changed('posts');
     let account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(row.account_id);
@@ -403,9 +361,7 @@ function createPosts(deps) {
     ticking = true;
     try {
       for (;;) {
-        // Local channels when they are due; Postiz Cloud channels right away, with their time.
-        const due = db.prepare(`SELECT * FROM posts WHERE status='scheduled' AND remote_group IS NULL
-          AND (publish_at <= ? OR account_id IN (SELECT id FROM accounts WHERE via='postiz')) ORDER BY publish_at LIMIT 1`).get(now());
+        const due = db.prepare(`SELECT * FROM posts WHERE status='scheduled' AND publish_at <= ? ORDER BY publish_at LIMIT 1`).get(now());
         if (!due) break;
         await publish(due);
       }
@@ -418,7 +374,7 @@ function createPosts(deps) {
 
   // A post that was being published when the engine stopped may or may not be
   // live; never send it again blindly.
-  db.prepare("UPDATE posts SET status='failed', error='Social Poster stopped while publishing this post. Check the account before you retry, so it is not posted twice.', updated_at=? WHERE status='publishing' AND remote_group IS NULL").run(now());
+  db.prepare("UPDATE posts SET status='failed', error='Social Poster stopped while publishing this post. Check the account before you retry, so it is not posted twice.', updated_at=? WHERE status='publishing'").run(now());
 
   /** Tells Notion once every channel of a post has a result. */
   function settle(group) {

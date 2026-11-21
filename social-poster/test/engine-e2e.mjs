@@ -59,8 +59,8 @@ try {
   const masked = await call('keys.get', { provider: 'linkedin' });
   ok(masked.LINKEDIN_CLIENT_ID.includes('••••'), 'saved keys come back masked');
   const li = await call('accounts.connect', { provider: 'linkedin' }).catch((e) => ({ error: e.message }));
-  ok(li.url?.startsWith('https://www.linkedin.com/oauth/v2/authorization') && li.url.includes(encodeURIComponent(`http://127.0.0.1:${port}/integrations/social/linkedin`)),
-    'LinkedIn sign-in link built with the local callback');
+  ok(li.url?.startsWith('https://www.linkedin.com/oauth/v2/authorization') && li.url.includes(encodeURIComponent(`https://lucas10-ctrl.github.io/Buzz-plugins/connect/${port}/integrations/social/linkedin`)),
+    'LinkedIn sign-in link returns through the https relay to this port');
   const missing = await call('accounts.connect', { provider: 'x' }).catch((e) => e.message);
   ok(/developer keys/.test(missing), 'connecting X without keys explains what is missing');
 

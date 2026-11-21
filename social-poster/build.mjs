@@ -67,4 +67,14 @@ for (const [name, target] of [
   chmodSync(join(bin, name), 0o755);
   console.log(`installed ${join(bin, name)}`);
 }
+// 4. Posting while Buzz is closed (Linux): a systemd user timer runs
+// `social-poster-engine --once` every 2 minutes. It exits at once when Buzz's
+// engine is running or nothing is due.
+if (process.platform === 'linux') {
+  const units = join(homedir(), '.config', 'systemd', 'user');
+  mkdirSync(units, { recursive: true });
+  writeFileSync(join(units, 'social-poster.service'), `[Unit]\nDescription=Social Poster: publish posts that are due\n\n[Service]\nType=oneshot\nExecStart=${join(bin, 'social-poster-engine')} --once\n`);
+  writeFileSync(join(units, 'social-poster.timer'), `[Unit]\nDescription=Social Poster: publish due posts while Buzz is closed\n\n[Timer]\nOnBootSec=1min\nOnUnitActiveSec=2min\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`);
+  console.log(`wrote ${units}/social-poster.{service,timer}; turn it on with: systemctl --user enable --now social-poster.timer`);
+}
 console.log(`\nDone. In Buzz: Settings → Plugins → Manage plugins → Add → Browse → ${root}`);
