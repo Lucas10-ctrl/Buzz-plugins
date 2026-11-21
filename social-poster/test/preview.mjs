@@ -10,11 +10,7 @@ const api = JSON.parse(readFileSync(join(home, 'api.json'), 'utf8'));
 const pluginDir = new URL('../', import.meta.url).pathname;
 
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>Social Poster preview</title>
-<style>body{margin:0;font-family:Inter,system-ui,sans-serif;background:#1b1b1f;color:#e8e8ea}
-.ui-card{background:#232328;border:1px solid #33333a}
-button{background:#2d2d34;color:#e8e8ea;border:1px solid #44444c}
-select option{background:#232328}
-a{color:#8ab4ff}</style>
+<style>:root{color-scheme:${process.env.SCHEME || 'dark'}}html,body,#root{height:100%;margin:0}body{font-family:Inter,system-ui,sans-serif;background:Canvas;color:CanvasText}</style>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 </head><body><div id="root"></div>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

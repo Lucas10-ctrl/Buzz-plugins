@@ -1,0 +1,41 @@
+diff --git a/libraries/nestjs-libraries/src/integrations/social/linkedin.provider.ts b/libraries/nestjs-libraries/src/integrations/social/linkedin.provider.ts
+index 762c020..3cc2363 100644
+--- a/libraries/nestjs-libraries/src/integrations/social/linkedin.provider.ts
++++ b/libraries/nestjs-libraries/src/integrations/social/linkedin.provider.ts
+@@ -86,8 +86,12 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
+     vals: any
+   ): Promise<string | true> {
+     const [firstPost, ...restPosts] = posts ?? [];
++    // Social Poster patch: one ready-made PDF is a valid document carousel.
++    const singlePdf =
++      firstPost?.length === 1 && /\.pdf($|\?)/i.test(firstPost[0]?.path || '');
+ 
+     if (
++      !singlePdf &&
+       this.assetBoolean(vals?.post_as_images_carousel) &&
+       ((firstPost?.length ?? 0) < 2 ||
+         firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1))
+@@ -539,6 +543,23 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
+       return postDetails;
+     }
+ 
++    // Social Poster patch: a PDF the owner made (for example slides exported
++    // from Figma or Canva) is posted as the document as it is.
++    const [rest0, ...restPosts] = postDetails;
++    if (
++      firstPost.media.length === 1 &&
++      /\.pdf($|\?)/i.test(firstPost.media[0].path || '')
++    ) {
++      const buffer = await this.readOrFetch(firstPost.media[0].path);
++      return [
++        {
++          ...rest0,
++          media: [{ type: 'image' as const, path: 'carousel.pdf', buffer } as any],
++        },
++        ...restPosts,
++      ];
++    }
++
+     // Fetch all images and get their dimensions
+     const images = await Promise.all(
+       firstPost.media.map(async (media) => {

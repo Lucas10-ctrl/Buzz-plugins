@@ -19,7 +19,7 @@ const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const STDIO = process.argv.includes('--stdio');
 const HOME = process.env.SOCIAL_POSTER_HOME || path.join(os.homedir(), '.local', 'share', 'social-poster');
 const UPLOADS = path.join(HOME, 'uploads');
@@ -82,6 +82,9 @@ db.exec(`
   );
 `);
 fs.chmodSync(path.join(HOME, 'social-poster.db'), 0o600);
+for (const sql of ['ALTER TABLE accounts ADD COLUMN avatar TEXT', 'ALTER TABLE media ADD COLUMN pages TEXT']) {
+  try { db.exec(sql); } catch {}
+}
 
 const getSetting = (key, fallback = null) => {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -139,6 +142,10 @@ function applyEnvironment() {
   process.env.NEXT_PUBLIC_BACKEND_URL = callbackBase();
   process.env.UPLOAD_DIRECTORY = UPLOADS;
   process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY = 'uploads';
+  // Media is served by this engine on 127.0.0.1, which Postiz's guard against
+  // fetching private addresses would refuse. Every media path here comes from
+  // the owner's own library, so the guard is off.
+  process.env.DISABLE_SSRF_PROTECTION = 'true';
   for (const [name, value] of Object.entries(getSetting('keys', {}))) {
     if (value) process.env[name] = value;
   }
@@ -181,7 +188,7 @@ async function listProviders() {
         editor: p.editor || 'normal',
         maxLength: safe(() => p.maxLength()) ?? null,
         callbackUrl: `${callbackBase()}/integrations/social/${identifier}`,
-        publicMediaOnly: ['instagram', 'instagram-standalone', 'threads', 'pinterest', 'tiktok', 'tiktok-business', 'facebook'].includes(identifier),
+        caps: capsOf(identifier),
       });
     }
     providerCache.sort((a, b) => a.name.localeCompare(b.name));
@@ -231,11 +238,15 @@ const publicAccount = (a) => ({
   name: a.name,
   username: a.username,
   picture: a.picture,
+  avatar: a.avatar || null,
   status: a.status,
   statusMessage: a.status_message,
   connectedAt: new Date(a.created_at).toISOString(),
 });
-const listAccounts = () => db.prepare('SELECT * FROM accounts ORDER BY provider, name').all().map(publicAccount);
+async function listAccounts() {
+  await fillAvatars().catch(() => {});
+  return db.prepare('SELECT * FROM accounts ORDER BY provider, name').all().map(publicAccount);
+}
 
 /** The shape of Postiz's Prisma `Integration` record, which connectors read. */
 const integrationOf = (a) => ({
@@ -354,7 +365,7 @@ async function selectPage({ account, page }) {
 
 function removeAccount({ account }) {
   const a = accountRow(account);
-  db.prepare("UPDATE posts SET status='cancelled', error='Account removed', updated_at=? WHERE account_id=? AND status='scheduled'").run(now(), a.id);
+  db.prepare("UPDATE posts SET status='draft', error='Account removed', updated_at=? WHERE account_id=? AND status='scheduled'").run(now(), a.id);
   db.prepare('DELETE FROM accounts WHERE id = ?').run(a.id);
   changed('accounts');
   changed('posts');
@@ -372,223 +383,55 @@ async function refreshAccount(a) {
   return accountRow(a.id);
 }
 
-// ── Posts ──────────────────────────────────────────────────────────────────
+// ── Media, posts, Notion ───────────────────────────────────────────────────
 
-const VIDEO = /\.(mp4|mov|m4v|webm|avi|mkv)(\?|$)/i;
+const { createMedia } = require('./media.cjs');
+const { createPosts } = require('./posts.cjs');
+const { createTunnel } = require('./tunnel.cjs');
+const { createNotion } = require('./notion.cjs');
+const { createNotionContent } = require('./notion-content.cjs');
+const { CAPS, capsOf } = require('./caps.cjs');
 
-function storeMedia(items) {
-  return (items || []).map((item) => {
-    const src = typeof item === 'string' ? item : item.path || item.url;
-    const alt = typeof item === 'object' ? item.alt : undefined;
-    if (!src) throw new Error('A media item has no path or URL');
-    if (/^https:\/\//i.test(src)) return { type: VIDEO.test(src) ? 'video' : 'image', path: src, url: src, alt };
-    const file = src.startsWith('~/') ? path.join(os.homedir(), src.slice(2)) : path.resolve(src);
-    if (!fs.existsSync(file)) throw new Error(`Media file not found: ${src}`);
-    if (path.dirname(file) === UPLOADS) {
-      return { type: VIDEO.test(file) ? 'video' : 'image', path: file, url: `${callbackBase()}/uploads/${path.basename(file)}`, alt };
-    }
-    const name = `${newId()}${path.extname(file).toLowerCase()}`;
-    fs.copyFileSync(file, path.join(UPLOADS, name));
-    return { type: VIDEO.test(file) ? 'video' : 'image', path: path.join(UPLOADS, name), url: `${callbackBase()}/uploads/${name}`, alt };
-  });
-}
-
-function resolveAccounts(list) {
-  const all = db.prepare('SELECT * FROM accounts').all();
-  if (!Array.isArray(list) || !list.length) throw new Error('Choose at least one account to post to');
-  return list.map((ref) => {
-    const key = String(ref).toLowerCase().replace(/^@/, '');
-    const hits = all.filter((a) =>
-      a.id === ref || a.provider === key || a.name.toLowerCase() === key || (a.username || '').toLowerCase().replace(/^@/, '') === key ||
-      `${a.provider}:${(a.username || a.name).toLowerCase()}` === key);
-    if (hits.length === 1) return hits[0];
-    if (!hits.length) throw new Error(`No connected account matches "${ref}"`);
-    throw new Error(`"${ref}" matches several accounts; use an account id (${hits.map((h) => h.id).join(', ')})`);
-  });
-}
-
-function parseWhen(at) {
-  if (at === undefined || at === null || at === '' || at === 'now') return now();
-  const t = typeof at === 'number' ? at : Date.parse(at);
-  if (!Number.isFinite(t)) throw new Error(`Could not read the time "${at}"; use ISO 8601, e.g. 2026-11-24T09:00:00-05:00`);
-  return t;
-}
-
-async function createPost({ accounts, text, media, at, settings, createdBy }) {
-  const body = String(text ?? '').trim();
-  if (!body) throw new Error('The post has no text');
-  const targets = resolveAccounts(accounts);
-  const providers = await listProviders();
-  for (const a of targets) {
-    if (a.status !== 'ready') throw new Error(`${a.name} (${a.provider}) is not ready: ${a.status_message || a.status}`);
-    const info = providers.find((p) => p.identifier === a.provider);
-    if (info?.maxLength && body.length > info.maxLength) throw new Error(`The text is ${body.length} characters; ${info.name} allows ${info.maxLength}`);
-  }
-  const when = parseWhen(at);
-  const stored = storeMedia(media);
-  const group = newId();
-  const t = now();
-  const ids = [];
-  for (const a of targets) {
-    const id = newId();
-    const own = settings && typeof settings === 'object' ? settings[a.provider] ?? settings[a.id] ?? (isPerNetwork(settings) ? {} : settings) : {};
-    db.prepare(`INSERT INTO posts (id, group_id, account_id, text, media, settings, publish_at, status, created_by, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, group, a.id, body, JSON.stringify(stored), JSON.stringify(own || {}), when, 'scheduled', createdBy || null, t, t);
-    ids.push(id);
-  }
-  changed('posts');
-  setImmediate(tick);
-  return { group, posts: ids.map(postById) };
-}
-const isPerNetwork = (s) => Object.keys(s).some((k) => KEYS[k] || ['bluesky', 'nostr', 'lemmy', 'medium', 'devto', 'hashnode', 'wordpress', 'listmonk', 'moltbook'].includes(k));
-
-function postById(id) {
-  const row = db.prepare(`SELECT p.*, a.name AS account_name, a.provider AS network, a.username AS account_username
-    FROM posts p LEFT JOIN accounts a ON a.id = p.account_id WHERE p.id = ?`).get(id);
-  if (!row) throw new Error(`No post with id ${id}`);
-  return publicPost(row);
-}
-const publicPost = (r) => ({
-  id: r.id,
-  group: r.group_id,
-  account: r.account_id,
-  accountName: r.account_name || '(removed account)',
-  network: r.network,
-  text: r.text,
-  media: JSON.parse(r.media).map((m) => m.url),
-  settings: JSON.parse(r.settings || '{}'),
-  publishAt: new Date(r.publish_at).toISOString(),
-  status: r.status,
-  url: r.release_url,
-  error: r.error,
-  attempts: r.attempts,
-  createdBy: r.created_by,
+const tunnel = createTunnel({ home: HOME, port: PORT, log });
+const media = createMedia({ db, uploads: UPLOADS, callbackBase, newId, changed, tunnel });
+let notionContent;
+const posts = createPosts({
+  db, P, provider, accountRow, integrationOf, refreshAccount, media, newId, now, changed, emit, log,
+  onGroupState: (group, state, rows) => void notionContent?.sync(group, state, rows),
 });
+const notion = createNotion({ getSetting, setSetting, callbackBase, openInBrowser: (u) => openInBrowser(u), log, onChange: () => changed('notion') });
+notionContent = createNotionContent({ notion, db, media, posts, log, changed });
+const errorText = posts.errorText;
+const tick = posts.tick;
 
-function listPosts({ status, limit = 100 } = {}) {
-  const rows = status
-    ? db.prepare(`SELECT p.*, a.name AS account_name, a.provider AS network FROM posts p LEFT JOIN accounts a ON a.id = p.account_id
-        WHERE p.status = ? ORDER BY p.publish_at DESC LIMIT ?`).all(status, limit)
-    : db.prepare(`SELECT p.*, a.name AS account_name, a.provider AS network FROM posts p LEFT JOIN accounts a ON a.id = p.account_id
-        ORDER BY CASE p.status WHEN 'scheduled' THEN 0 WHEN 'publishing' THEN 0 ELSE 1 END, p.publish_at DESC LIMIT ?`).all(limit);
-  return rows.map(publicPost);
+/** Options for a lookup field (Pinterest boards, Discord channels, ...). */
+async function accountOptions({ account, method, params }) {
+  const a = accountRow(account);
+  const p = provider(a.provider);
+  if (!/^[a-zA-Z]+$/.test(String(method)) || typeof p[method] !== 'function') throw new Error(`${p.name} has no "${method}" list`);
+  const list = await p[method](a.token, params || {}, a.internal_id, integrationOf(a));
+  const arr = Array.isArray(list) ? list : list?.results || list?.data || [];
+  return arr.map((x) => ({
+    value: String(x.id ?? x.value ?? x.name ?? x.subreddit ?? ''),
+    label: String(x.name ?? x.label ?? x.title ?? x.display_name_prefixed ?? x.subreddit ?? x.id ?? ''),
+    raw: x,
+  })).filter((x) => x.value);
 }
 
-function cancelPost({ post }) {
-  const r = db.prepare("UPDATE posts SET status='cancelled', updated_at=? WHERE (id=? OR group_id=?) AND status='scheduled'").run(now(), post, post);
-  if (!r.changes) throw new Error('Nothing to cancel: only scheduled posts can be cancelled');
-  changed('posts');
-  return { cancelled: Number(r.changes) };
-}
-
-function retryPost({ post, at }) {
-  const r = db.prepare("UPDATE posts SET status='scheduled', error=NULL, publish_at=?, updated_at=? WHERE (id=? OR group_id=?) AND status IN ('failed','cancelled')")
-    .run(parseWhen(at), now(), post, post);
-  if (!r.changes) throw new Error('Only failed or cancelled posts can be retried');
-  changed('posts');
-  setImmediate(tick);
-  return { scheduled: Number(r.changes) };
-}
-
-function deletePost({ post }) {
-  const r = db.prepare("DELETE FROM posts WHERE (id=? OR group_id=?) AND status != 'publishing'").run(post, post);
-  changed('posts');
-  return { deleted: Number(r.changes) };
-}
-
-function editPost({ post, text, at }) {
-  const row = db.prepare('SELECT * FROM posts WHERE id = ?').get(post);
-  if (!row || row.status !== 'scheduled') throw new Error('Only scheduled posts can be edited');
-  db.prepare('UPDATE posts SET text=COALESCE(?, text), publish_at=?, updated_at=? WHERE id=?')
-    .run(text ?? null, at !== undefined ? parseWhen(at) : row.publish_at, now(), post);
-  changed('posts');
-  return postById(post);
-}
-
-/** A file chosen in the Buzz page arrives as base64 and is kept in uploads/. */
-function uploadMedia({ name, base64 }) {
-  const ext = path.extname(String(name || '')).toLowerCase();
-  if (!/^\.(png|jpe?g|gif|webp|avif|mp4|mov|m4v|webm)$/.test(ext)) throw new Error('Use an image (PNG, JPG, GIF, WebP) or a video (MP4, MOV, WebM)');
-  const bytes = Buffer.from(String(base64 || ''), 'base64');
-  if (!bytes.length) throw new Error('The file is empty');
-  if (bytes.length > 200 * 1024 * 1024) throw new Error('The file is larger than 200 MB');
-  const file = path.join(UPLOADS, `${newId()}${ext}`);
-  fs.writeFileSync(file, bytes, { mode: 0o600 });
-  return { path: file, name: String(name), size: bytes.length };
-}
-
-// ── Publishing ─────────────────────────────────────────────────────────────
-
-const errorText = (err) => {
-  const base = String(err?.message || err || 'Unknown error');
-  const detail = err?.details?.[0];
-  const body = detail?.body && detail.body !== '{}' ? ` (${String(detail.body).slice(0, 300)})` : '';
-  return (base + body).slice(0, 1200);
-};
-const isType = (err, type) => err?.type === type || err?.constructor?.name === ({ refresh_token: 'RefreshToken', disconnect: 'Disconnect', bad_body: 'BadBody' })[type];
-
-async function publish(row) {
-  db.prepare("UPDATE posts SET status='publishing', attempts=attempts+1, updated_at=? WHERE id=?").run(now(), row.id);
-  changed('posts');
-  let account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(row.account_id);
-  try {
-    if (!account) throw new Error('The account was removed');
-    const p = provider(account.provider);
-    if (account.status === 'needs_page') throw new Error('Finish connecting this account: choose the page to post to');
-    if (account.token_expiration && account.token_expiration < now() + 5 * 60_000 && account.refresh_token && !p.noRefreshBeforeCall) {
-      account = await refreshAccount(account);
-    }
-    const details = [{
-      id: row.id,
-      message: P.stripHtmlValidation(p.editor || 'normal', row.text, true, false, true, p.mentionFormat, false),
-      settings: JSON.parse(row.settings || '{}'),
-      media: JSON.parse(row.media || '[]'),
-    }];
-    let result;
+/** Small round pictures for accounts, kept as data: URLs (the page can't load remote images). */
+async function fillAvatars() {
+  const sharp = require('sharp');
+  for (const a of db.prepare('SELECT id, picture FROM accounts WHERE avatar IS NULL AND picture IS NOT NULL').all()) {
     try {
-      result = await p.post(account.internal_id, account.token, details, integrationOf(account));
-    } catch (err) {
-      if (!isType(err, 'refresh_token')) throw err;
-      account = await refreshAccount(account);
-      result = await p.post(account.internal_id, account.token, details, integrationOf(account));
+      const res = await fetch(a.picture, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(String(res.status));
+      const buf = await sharp(Buffer.from(await res.arrayBuffer())).resize(96, 96, { fit: 'cover' }).jpeg({ quality: 80 }).toBuffer();
+      db.prepare('UPDATE accounts SET avatar=? WHERE id=?').run(`data:image/jpeg;base64,${buf.toString('base64')}`, a.id);
+    } catch {
+      db.prepare("UPDATE accounts SET avatar='' WHERE id=?").run(a.id);
     }
-    const first = (result || [])[0] || {};
-    db.prepare("UPDATE posts SET status='published', release_url=?, platform_post_id=?, error=NULL, updated_at=? WHERE id=?")
-      .run(first.releaseURL || null, first.postId ? String(first.postId) : null, now(), row.id);
-    emit('published', { post: postById(row.id) });
-  } catch (err) {
-    const message = errorText(err);
-    log(`[publish ${row.id}]`, message);
-    if (account && (isType(err, 'disconnect') || isType(err, 'refresh_token'))) {
-      db.prepare("UPDATE accounts SET status='disconnected', status_message=?, updated_at=? WHERE id=?").run(message, now(), account.id);
-      changed('accounts');
-    }
-    db.prepare("UPDATE posts SET status='failed', error=?, updated_at=? WHERE id=?").run(message, now(), row.id);
-    emit('failed', { post: postById(row.id) });
-  }
-  changed('posts');
-}
-
-let ticking = false;
-async function tick() {
-  if (ticking) return;
-  ticking = true;
-  try {
-    for (;;) {
-      const due = db.prepare("SELECT * FROM posts WHERE status='scheduled' AND publish_at <= ? ORDER BY publish_at LIMIT 1").get(now());
-      if (!due) break;
-      await publish(due);
-    }
-  } catch (err) {
-    log('[scheduler]', err?.stack || err);
-  } finally {
-    ticking = false;
   }
 }
-
-// A post that was being published when the engine stopped may or may not be
-// live; never send it again blindly.
-db.prepare("UPDATE posts SET status='failed', error='Social Poster stopped while publishing this post. Check the account before you retry, so it is not posted twice.', updated_at=? WHERE status='publishing'").run(now());
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -616,6 +459,9 @@ function status() {
     published: count('published'),
     failed: count('failed'),
     nextPostAt: next ? new Date(next).toISOString() : null,
+    drafts: count('draft'),
+    notion: notion.status(),
+    publicMediaLink: tunnel.current(),
   };
 }
 
@@ -641,19 +487,38 @@ const METHODS = {
   'accounts.pages': listPages,
   'accounts.selectPage': selectPage,
   'accounts.remove': removeAccount,
-  'posts.create': createPost,
-  'media.upload': uploadMedia,
+  'accounts.options': accountOptions,
+  // media library
+  'media.list': (p) => media.list(p),
+  'media.upload': (p) => media.upload(p),
+  'media.add': ({ src, name }) => media.add(String(src), name),
+  'media.remove': (p) => media.remove(p),
+  // the composer and calendar
+  'posts.validate': (p) => posts.validate(p),
+  'posts.save': (p) => posts.save(p),
+  'posts.group': (p) => posts.getGroup(p),
+  'posts.calendar': (p) => posts.calendar(p),
+  'posts.move': (p) => posts.move(p),
+  'posts.duplicate': (p) => posts.duplicate(p),
+  'posts.delete': (p) => posts.remove(p),
+  // command line and agent tools
+  'posts.create': (p) => posts.create(p),
+  'posts.list': (p) => posts.list(p),
+  'posts.get': ({ post }) => posts.list({ limit: 100000 }).find((x) => x.id === post || x.group === post) || (() => { throw new Error(`No post with id ${post}`); })(),
+  'posts.cancel': (p) => posts.unschedule(p),
+  'posts.retry': (p) => posts.retry(p),
+  // Notion
+  'notion.status': () => notion.status(),
+  'notion.connect': () => notion.connect(),
+  'notion.disconnect': () => notion.disconnect(),
+  'notion.setDatabase': (p) => notionContent.setDatabase(p),
+  'notion.pieces': () => notionContent.pieces(),
+  'notion.import': (p) => notionContent.importPiece(p),
   open: ({ url }) => {
     if (!/^https:\/\//i.test(String(url))) throw new Error('Only https links can be opened');
     openInBrowser(String(url));
     return { opened: true };
   },
-  'posts.list': listPosts,
-  'posts.get': ({ post }) => postById(post),
-  'posts.cancel': cancelPost,
-  'posts.retry': retryPost,
-  'posts.edit': editPost,
-  'posts.delete': deletePost,
 };
 
 async function call(method, params) {
@@ -708,15 +573,30 @@ const authorized = (req) => {
   return given.length === want.length && crypto.timingSafeEqual(given, want);
 };
 
+const LOCAL_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
+  // Requests that come through the public media tunnel may only read media.
+  const viaTunnel = !LOCAL_HOSTS.has(String(req.headers.host || '')) && !String(callbackBase()).includes(String(req.headers.host || '#'));
+  if (viaTunnel && !(req.method === 'GET' && (/^\/uploads\/[A-Za-z0-9_-]+\.[a-z0-9]+$/.test(url.pathname) || url.pathname === '/health'))) {
+    return send(res, 404, { error: 'not found' });
+  }
   try {
+    if (req.method === 'GET' && url.pathname === '/notion/callback') {
+      try {
+        await notion.finish(url.searchParams);
+        emit('notion', { status: notion.status() });
+        return send(res, 200, page('Notion is connected', 'Social Poster can now read your content calendar and update it when posts go out.'), 'text/html');
+      } catch (err) {
+        return send(res, 400, page('Notion is not connected', errorText(err), false), 'text/html');
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, app: 'social-poster', version: VERSION, pid: process.pid });
     const cb = url.pathname.match(/^\/integrations\/social\/([a-z0-9-]+)\/?$/);
     if (req.method === 'GET' && cb) return await handleCallback(cb[1], url.searchParams, res);
-    const media = url.pathname.match(/^\/uploads\/([A-Za-z0-9_-]+\.[a-z0-9]+)$/);
-    if (req.method === 'GET' && media) {
-      const file = path.join(UPLOADS, media[1]);
+    const file_ = url.pathname.match(/^\/uploads\/([A-Za-z0-9_-]+\.[a-z0-9]+)$/);
+    if (req.method === 'GET' && file_) {
+      const file = path.join(UPLOADS, file_[1]);
       if (!fs.existsSync(file)) return send(res, 404, { error: 'not found' });
       res.writeHead(200, { 'content-type': require('mime-types').lookup(file) || 'application/octet-stream' });
       return fs.createReadStream(file).pipe(res);
@@ -730,7 +610,11 @@ const server = http.createServer(async (req, res) => {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const { method, params } = JSON.parse(Buffer.concat(chunks).toString() || '{}');
-      return send(res, 200, { result: await call(method, params) });
+      try {
+        return send(res, 200, { result: await call(method, params) });
+      } catch (err) {
+        return send(res, 400, { error: errorText(err), problems: err.problems });
+      }
     }
     send(res, 404, { error: 'not found' });
   } catch (err) {
@@ -762,6 +646,7 @@ async function listen(attempt = 0) {
 let timer;
 function shutdown(code = 0) {
   clearInterval(timer);
+  tunnel.stop();
   server.close();
   try { db.close(); } catch {}
   process.exit(code);
@@ -794,7 +679,7 @@ process.on('unhandledRejection', (err) => log('[unhandled]', err?.stack || err))
         const result = await call(msg.method, msg.params);
         process.stdout.write(JSON.stringify({ id: msg.id, result }) + '\n');
       } catch (err) {
-        process.stdout.write(JSON.stringify({ id: msg.id, error: errorText(err) }) + '\n');
+        process.stdout.write(JSON.stringify({ id: msg.id, error: errorText(err), problems: err.problems }) + '\n');
       }
     });
     rl.on('close', () => shutdown(0));
