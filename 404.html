@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Social Poster sign-in</title>
+<meta name="robots" content="noindex">
+<p id="m" style="font:18px system-ui;max-width:560px;margin:15vh auto">Sending you back to Social Poster on this computer…</p>
+<script>
+// Social Poster sign-in relay. Networks such as TikTok, Meta and LinkedIn only
+// send you back to an https address, so they send you here; this page forwards
+// the browser to Social Poster's own server on 127.0.0.1. Nothing is stored.
+(function () {
+  var m = location.pathname.match(/\/connect\/(\d{2,5})(\/(?:integrations\/social\/[a-z0-9-]+|notion\/callback)\/?)$/);
+  if (!m) { document.getElementById('m').textContent = 'This page only forwards Social Poster sign-ins.'; return; }
+  location.replace('http://127.0.0.1:' + m[1] + m[2] + location.search + location.hash);
+})();
+</script>
