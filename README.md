@@ -12,6 +12,7 @@ Buzz is great for multi-agent coordination and project management. Here's some p
 | [hermes-agents](hermes-agents) | Assign hermes profiles for your Buzz agents, each with its own hermes skills, model, and memory managed by your Hermes setup. Not just running on hermes, but individual profiles. |
 | [opencode-connector](opencode-connector) | Run OpenCode as a Buzz agent on any model it knows, including local models through Lemonade. Each thread is one continuing OpenCode session. |
 | [local-files](local-files) | Click a local Markdown, image, video or folder path in a message to open it beside the chat. Markdown opens in an Omawrite-style editor (type, save, see agents' changes load in); images and videos open in a viewer; folders open as a browsable list with an "Open in file manager" button. |
+| [social-poster](social-poster) | Write, schedule and publish posts to 34 social networks (X, LinkedIn, Instagram, Facebook, Threads, YouTube, TikTok, Bluesky...) from Buzz, with agent tools and a command line. Runs the open-source Postiz connectors on your computer: no Docker, no hosting. AGPL-3.0. |
 
 ## Install
 
@@ -20,6 +21,8 @@ Buzz is great for multi-agent coordination and project management. Here's some p
 Works on macOS (Apple Silicon and Intel), Linux x64 and Windows x64.
 
 **agent-skills, hermes-agents, opencode-connector, local-files:** download or clone this repo, then in Buzz choose **Settings → Plugins → Manage plugins → Load from folder** and pick the plugin's folder.
+
+**social-poster:** clone this repo, run `node build.mjs` in `social-poster/` once, then load that folder the same way. See [social-poster/README.md](social-poster/README.md).
 
 ## For AI assistants
 
@@ -32,4 +35,4 @@ To install an editor plugin for someone:
 
 ## License
 
-MIT, Copyright (c) 2026 Lucas Mondora. See [LICENSE](LICENSE). The editor plugins bundle parts of the Buzz app (Apache 2.0) and a few third-party libraries; each lists them in its `THIRD-PARTY-NOTICES.md`.
+MIT, Copyright (c) 2026 Lucas Mondora. See [LICENSE](LICENSE). Exception: `social-poster` is AGPL-3.0 because it includes Postiz code (see its LICENSE). The editor plugins bundle parts of the Buzz app (Apache 2.0) and a few third-party libraries; each lists them in its `THIRD-PARTY-NOTICES.md`.

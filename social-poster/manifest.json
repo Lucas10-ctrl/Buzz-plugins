@@ -1,0 +1,15 @@
+{
+  "id": "social-poster",
+  "name": "Social Poster",
+  "apiVersion": 1,
+  "description": "Write, schedule and publish posts to X, LinkedIn, Instagram, Facebook, Threads, YouTube, TikTok, Bluesky and 25 more networks, from Buzz. Built on Postiz's open-source connectors; no servers to host.",
+  "discovery": {
+    "category": "marketing",
+    "tags": ["social-media", "scheduling", "postiz", "marketing"]
+  },
+  "host": {
+    "processes": [
+      { "id": "engine", "program": "social-poster-engine", "args": ["--stdio"] }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+diff --git a/libraries/nestjs-libraries/src/integrations/social/nostr.provider.ts b/libraries/nestjs-libraries/src/integrations/social/nostr.provider.ts
+index 08deea5..2723166 100644
+--- a/libraries/nestjs-libraries/src/integrations/social/nostr.provider.ts
++++ b/libraries/nestjs-libraries/src/integrations/social/nostr.provider.ts
+@@ -123,6 +123,9 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
+         });
+ 
+         await relayInstance.publish(event);
++        // Social Poster patch: the relay accepted the event, so its id is
++        // known even when the subscription ends before echoing it back.
++        id = id || event.id;
+         const all = await value;
+         relayInstance.close();
+         // relayInstance.close();
