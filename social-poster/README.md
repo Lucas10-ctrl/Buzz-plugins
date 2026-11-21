@@ -20,6 +20,11 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 
 ## Use it
 
+| Write a post | Posts | Accounts |
+| --- | --- | --- |
+| ![Write a post](docs/write.png) | ![Posts](docs/posts.png) | ![Accounts](docs/accounts.png) |
+
+
 - **Accounts:** pick a network and connect it. Most networks first need a free developer app that you create once. The page shows the steps and the exact callback address to paste. Bluesky, Nostr, Lemmy, Medium, Dev.to, Hashnode, WordPress and ListMonk only need your login details.
 - **Write a post:** type the post, tick the accounts, add pictures or video if you want, then publish now or schedule it.
 - **Posts:** see what's scheduled, published (with links) or failed (with the reason). From here you can cancel, post again or delete.
@@ -58,6 +63,7 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 | `cli/social-poster.cjs` | The `social-poster` command |
 | `patches/` | Changes applied to Postiz. Its Nostr connector lost the post id when a relay answered late |
 | `test/engine-e2e.mjs` | Engine over stdio. `--publish` posts a real Nostr note from a throwaway key and reads it back |
+| `test/preview.mjs` | Shows the page in a normal browser against a real engine, for screenshots (`node test/preview.mjs <data folder> <port>`) |
 | `test/plugin-ui.mjs` | Loads `plugin.js` in jsdom with React 19 and clicks through connect, schedule, cancel and the agent tools |
 
 To run the tests: `node test/engine-e2e.mjs`, then `cd test && npm ci && node plugin-ui.mjs`.

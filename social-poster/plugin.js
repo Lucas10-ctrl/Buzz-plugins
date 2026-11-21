@@ -305,8 +305,8 @@ function createViews(React, engine, ctx) {
     hint: { margin: 0, opacity: 0.7, fontSize: 14 },
     row: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
     tabs: { display: "flex", gap: 8, flexWrap: "wrap" },
-    input: { padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(127,127,127,0.35)", background: "transparent", color: "inherit", font: "inherit", width: "100%", boxSizing: "border-box" },
-    textarea: { padding: 12, borderRadius: 8, border: "1px solid rgba(127,127,127,0.35)", background: "transparent", color: "inherit", font: "inherit", fontSize: 16, width: "100%", minHeight: 150, resize: "vertical", boxSizing: "border-box" },
+    input: { fontWeight: 400, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(127,127,127,0.35)", background: "transparent", color: "inherit", font: "inherit", width: "100%", boxSizing: "border-box" },
+    textarea: { fontWeight: 400, padding: 12, borderRadius: 8, border: "1px solid rgba(127,127,127,0.35)", background: "transparent", color: "inherit", font: "inherit", fontSize: 16, width: "100%", minHeight: 150, resize: "vertical", boxSizing: "border-box" },
     label: { display: "flex", flexDirection: "column", gap: 6, fontWeight: 600 },
     check: { display: "flex", gap: 10, alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(127,127,127,0.25)", cursor: "pointer" },
     item: { display: "flex", flexDirection: "column", gap: 6, padding: "14px 0", borderTop: "1px solid rgba(127,127,127,0.2)" },
@@ -487,6 +487,7 @@ function createViews(React, engine, ctx) {
   // ── Posts ──
   function Queue({ version }) {
     const posts = useLoad("posts.list", { limit: 200 }, [version]);
+    const providers = useLoad("providers.list", {}, []);
     const [error, setError] = React.useState("");
     const act = (method, post) => engine.call(method, { post }).then(() => setError("")).catch((e) => setError(String(e.message || e)));
     if (posts.error) return h("p", { style: S.error }, posts.error);
@@ -505,7 +506,7 @@ function createViews(React, engine, ctx) {
           h("h2", { style: S.h2 }, `${title} (${list.length})`),
           list.map((p) => h("div", { key: p.id, style: S.item },
             h("div", { style: S.row },
-              h("strong", null, p.accountName), h("span", { style: S.hint }, p.network),
+              h("strong", null, p.accountName), h("span", { style: S.hint }, networkName(providers.data, p.network)),
               h("span", { style: S.badge }, p.status === "publishing" ? "publishing now" : fmt(p.publishAt)),
               p.createdBy && p.createdBy !== "owner" ? h("span", { style: S.hint }, `by ${p.createdBy}`) : null),
             h("p", { style: { margin: 0, whiteSpace: "pre-wrap" } }, p.text),
