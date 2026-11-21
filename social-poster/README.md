@@ -33,7 +33,8 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 - **Drafts:** drafts, Notion imports and posts that failed (with the reason).
 - **Media library:** every picture, video and PDF you have used, stored once.
 - **Notion:** connect Notion through its official MCP connection and paste the link to your content calendar database. Each piece that isn't published yet can become a draft with its caption and slides. When it is scheduled or posted, Social Poster sets its Status in Notion and fills in the live link.
-- **Channels:** connect a network. Most networks first need a free developer app that you create once. The page shows the steps and the exact callback address to paste. Bluesky, Nostr, Lemmy, Medium, Dev.to, Hashnode, WordPress and ListMonk only need your login details.
+- **Channels → Main channels:** YouTube, X, Facebook, Instagram, LinkedIn Page and TikTok connect with one click. These networks only let approved apps post, and approval takes weeks, so Social Poster uses your [Postiz Cloud](https://postiz.com) account, which already has approved apps. You sign in to Postiz once (if the `postiz` command is already signed in on this computer, that login is reused), then click **Connect** and sign in to the network. Channels you already connected in Postiz show up straight away. Posts for these channels are handed to Postiz with their time, so they go out even when Buzz is closed; Social Poster reads back the result and the live link. Your Postiz plan sets how many channels you can connect.
+- **Channels → Add a channel:** any of the 34 networks with your own developer app. Most networks first need a free developer app that you create once. The page shows the steps and the exact callback address to paste. Bluesky, Nostr, Lemmy, Medium, Dev.to, Hashnode, WordPress and ListMonk only need your login details.
 
 ## For agents
 
@@ -47,7 +48,7 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 
 ## Good to know
 
-- Scheduled posts go out only while Buzz is open. If Buzz was closed at the scheduled time, the post goes out as soon as Buzz opens again.
+- Posts on channels connected through Postiz go out even when Buzz is closed. Other scheduled posts go out only while Buzz is open. If Buzz was closed at the scheduled time, the post goes out as soon as Buzz opens again.
 - Accounts, keys and posts are stored in `~/.local/share/social-poster/` and stay on your computer.
 - Instagram, Facebook, Threads, Pinterest and TikTok download pictures themselves. For files that are only on your computer, Social Poster opens a temporary public Cloudflare link that serves only those files, only while they are being posted.
 - LinkedIn and Meta (Facebook, Instagram, Threads) may only accept an https callback address. If so, set a tunnel address under **Channels → Advanced settings**.
@@ -67,6 +68,7 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 | `engine/main.cjs` | The engine: storage, scheduler, sign-ins, local web server |
 | `engine/posts.cjs`, `engine/caps.cjs` | Posts (shared text plus per-channel versions) and what each network accepts |
 | `engine/media.cjs`, `engine/tunnel.cjs` | Media library (thumbnails, PDF pages) and the temporary public link |
+| `engine/cloud.cjs` | The Postiz Cloud link: sign-in, channels, handing posts over and reading results |
 | `engine/notion.cjs`, `engine/notion-content.cjs` | Notion MCP sign-in and the content-calendar import and write-back |
 | `engine/providers.ts` | Bundles Postiz's connectors into `engine/dist/providers.cjs` |
 | `cli/social-poster.cjs` | The `social-poster` command |
@@ -74,6 +76,7 @@ You need Node.js 22.5 or newer and git. Tested on Linux with Node 26.
 | `test/engine-e2e.mjs` | Engine over stdio. `--publish` posts a real Nostr note from a throwaway key and reads it back |
 | `test/preview.mjs` | Shows the page in a normal browser against a real engine, for screenshots (`node test/preview.mjs <data folder> <port>`) |
 | `test/plugin-ui.mjs` | Loads `plugin.js` in jsdom with React 19 and clicks through connecting a channel, the media library, a carousel post with a per-channel version, the calendar views, drafts and the agent tools |
+| `test/postiz-cloud.mjs` | Checks the Postiz Cloud link with the Postiz account signed in on this computer: schedules a June 2027 post, moves it and deletes it. Nothing is published |
 | `test/demo-seed.mjs` | Fills a throwaway data folder with example posts for screenshots |
 
 To run the tests: `node test/engine-e2e.mjs`, then `cd test && npm ci && node plugin-ui.mjs`.

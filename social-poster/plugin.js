@@ -906,12 +906,13 @@ function createApp(React, engine) {
     return h(React.Fragment, null,
       h("div", { style: S.head }, h("h1", { style: S.h1 }, "Channels")),
       h("div", { style: S.body }, h("div", { style: { display: "flex", flexDirection: "column", gap: 16, maxWidth: 860 } },
+        h(MainChannels, { version, accounts, pickOwnApp: setNetwork }),
         h("section", { style: S.card }, h("h2", { style: S.h2 }, "Connected"), error ? h("p", { style: S.error }, error) : null,
           accounts.length ? accounts.map((a) => h("div", { key: a.id, style: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid rgba(127,127,127,0.15)" } },
-            h(Avatar, { account: a, size: 38 }), h("div", { style: { flex: 1 } }, h("strong", null, a.name), h("div", { style: S.hint }, `${providers.find((p) => p.identifier === a.network)?.name || a.network}${a.username ? ` · @${a.username}` : ""}`)),
+            h(Avatar, { account: a, size: 38 }), h("div", { style: { flex: 1 } }, h("strong", null, a.name), h("div", { style: S.hint }, `${providers.find((p) => p.identifier === a.network)?.name || a.network}${a.username ? ` · @${String(a.username).replace(/^@/, "")}` : ""}${a.via === "postiz" ? " · through Postiz" : ""}`)),
             a.status === "needs_page" ? h(PagePicker, { account: a }) : null,
             a.status === "disconnected" ? h("button", { style: S.btn, onClick: () => setNetwork(a.network) }, "Reconnect") : null,
-            h("button", { style: S.ghost, onClick: () => { if (confirmed(`Remove ${a.name}? Its scheduled posts go back to drafts.`)) engine.call("accounts.remove", { account: a.id }).catch((e) => setError(errText(e))); } }, "Remove")))
+            h("button", { style: S.ghost, onClick: () => { if (confirmed(a.via === "postiz" ? `Remove ${a.name} from Social Poster? It stays connected in Postiz. Its scheduled posts go back to drafts.` : `Remove ${a.name}? Its scheduled posts go back to drafts.`)) engine.call("accounts.remove", { account: a.id }).catch((e) => setError(errText(e))); } }, "Remove")))
             : h("p", { style: S.hint }, "None yet. Pick a network below.")),
         h("section", { style: S.card }, h("h2", { style: S.h2 }, "Add a channel"),
           h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 } }, providers.map((p) =>
@@ -920,6 +921,45 @@ function createApp(React, engine) {
               h("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, p.name)))),
           info ? h(Connect, { key: info.identifier, info }) : null),
         h(Advanced, { version }))));
+  }
+  const MAIN = [["youtube", "YouTube", ["youtube"]], ["x", "X (Twitter)", ["x"]], ["facebook", "Facebook Page", ["facebook"]],
+    ["instagram", "Instagram", ["instagram", "instagram-standalone"]], ["linkedin-page", "LinkedIn Page", ["linkedin-page", "linkedin"]], ["tiktok", "TikTok", ["tiktok", "tiktok-business"]]];
+  function MainChannels({ version, accounts, pickOwnApp }) {
+    const st = useLoad("cloud.status", {}, [version]);
+    const [busy, setBusy] = useState("");
+    const [msg, setMsg] = useState(null);
+    const [next, setNext] = useState(null);
+    const s = st.data;
+    async function connect(network) {
+      setMsg(null); setBusy(network);
+      try {
+        if (!s?.connected) {
+          const r = await engine.call("cloud.signIn", {}, 60000);
+          if (!r.connected) { setNext(network); setMsg({ ok: true, text: `Approve Social Poster in the Postiz page that opened in your browser (code ${r.code}). This channel's sign-in opens right after.`, url: r.url }); return; }
+        }
+        const r = await engine.call("cloud.connect", { network }, 60000);
+        setMsg(r.error ? { ok: false, text: r.error, upgradeUrl: r.upgradeUrl, network } : { ok: true, text: r.message, url: r.url });
+      } catch (e) { setMsg({ ok: false, text: errText(e) }); } finally { setBusy(""); }
+    }
+    useEffect(() => { if (s?.connected && next) { const n = next; setNext(null); void connect(n); } }, [s?.connected, next]);
+    return h("section", { style: S.card },
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, h("h2", { style: { ...S.h2, flex: 1 } }, "Main channels: connect with one click"),
+        s?.connected ? h("span", { style: S.ok }, "✓ Signed in to Postiz") : null,
+        s?.connected ? h("button", { style: S.ghost, onClick: () => { if (confirmed("Sign out of Postiz? Channels connected through Postiz are removed here and their scheduled posts go back to drafts.")) void engine.call("cloud.signOut"); } }, "Sign out") : null),
+      h("p", { style: { margin: 0 } }, "These networks only let approved apps post. Social Poster uses your Postiz account, which already has approved apps, so you just sign in to the network. Posts on these channels are sent by Postiz at their time, even when Buzz is closed."),
+      h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 } }, MAIN.map(([id, name, nets]) => {
+        const mine = accounts.filter((a) => nets.includes(a.network));
+        const [label, color] = net(id);
+        return h("div", { key: id, style: { display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, border: "1px solid rgba(127,127,127,0.25)" } },
+          h("span", { style: { width: 34, height: 34, flex: "0 0 34px", borderRadius: 9, background: color, color: "#fff", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" } }, label),
+          h("div", { style: { flex: 1, minWidth: 0 } }, h("strong", null, name),
+            h("div", { style: { ...S.hint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, mine.length ? `✓ ${mine.map((a) => a.name).join(", ")}` : "Not connected")),
+          h("button", { style: mine.length ? S.btn : S.primary, disabled: !!busy, onClick: () => connect(id) }, busy === id ? "Opening…" : mine.length ? "Add another" : "Connect"));
+      })),
+      msg ? h("p", { style: msg.ok ? S.ok : S.error }, msg.text,
+        msg.url ? h("span", null, " ", h(Link, { href: msg.url }, "Open it again")) : null,
+        msg.upgradeUrl ? h("span", null, " ", h(Link, { href: msg.upgradeUrl }, "Open Postiz billing"), " · ",
+          h("a", { href: "#", style: { color: ACCENT }, onClick: (e) => { e.preventDefault(); pickOwnApp(msg.network); } }, "or connect it with your own developer app")) : null) : null);
   }
   function PagePicker({ account }) {
     const pages = useLoad("accounts.pages", { account: account.id }, [account.id]);
