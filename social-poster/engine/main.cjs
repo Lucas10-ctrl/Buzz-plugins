@@ -367,7 +367,11 @@ async function selectPage({ account, page }) {
   if (!p.fetchPageInformation) throw new Error(`${p.name} does not use pages`);
   const pages = await listPages({ account });
   const chosen = pages.find((x) => x.id === String(page?.id ?? page));
-  const info = await p.fetchPageInformation(a.token, chosen ? chosen.raw : page);
+  // Connectors read the choice under different names (Facebook and LinkedIn
+  // Page: "page"; Instagram: "pageId"; others: "id"), as Postiz's own page
+  // picker sends them. Give every one of them.
+  const raw = chosen ? chosen.raw : (typeof page === 'object' ? page : { id: page });
+  const info = await p.fetchPageInformation(a.token, { ...raw, page: raw.page ?? raw.id });
   db.prepare(`UPDATE accounts SET internal_id=?, name=?, picture=?, token=?, username=?, status='ready', status_message=NULL, updated_at=? WHERE id=?`)
     .run(String(info.id), info.name, info.picture || null, info.access_token || a.token, info.username || a.username, now(), a.id);
   changed('accounts');
