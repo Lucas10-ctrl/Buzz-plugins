@@ -5,7 +5,11 @@ import { EditorComposerBridge } from "./editor-composer";
 import { canvasWebsiteGuide } from "./canvas-website";
 import { docChatLink } from "./docs-route";
 import { readView } from "../../../shared/view-state";
-import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
+import {
+  editorWorkspaceId,
+  editorWorkspaceKey,
+  workspacePreferences,
+} from "./workspace";
 import { carriesEditor } from "./editor-package";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
@@ -765,7 +769,7 @@ export class EditorAgentBridge {
           return undefined;
         if (readView<unknown>(scope, agentDocCreationKey, true) === false)
           return undefined;
-        const solo = session.soloPreferences.snapshot().data;
+        const solo = workspacePreferences(session).snapshot().data;
         const filed = channel ? solo?.assignments[channel] : undefined;
         const selected = readView<unknown>(scope, editorWorkspaceKey, "");
         return {
@@ -781,10 +785,10 @@ export class EditorAgentBridge {
         };
       },
       workspaces: () =>
-        ctx.relay.snapshot().session.soloPreferences.snapshot().data
+        workspacePreferences(ctx.relay.snapshot().session).snapshot().data
           ?.sections ?? [],
       workspaceOf: (channel) =>
-        ctx.relay.snapshot().session.soloPreferences.snapshot().data
+        workspacePreferences(ctx.relay.snapshot().session).snapshot().data
           ?.assignments[channel],
     };
     if (carriesEditor("pages")) ctx.agents.addTool(this.tool());

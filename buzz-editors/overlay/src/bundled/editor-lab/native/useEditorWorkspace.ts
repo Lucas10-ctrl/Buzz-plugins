@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { RelaySnapshot } from "../../../features/relay/service";
 import { readView, subscribeView, writeView } from "../../../shared/view-state";
-import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
+import {
+  editorWorkspaceId,
+  editorWorkspaceKey,
+  workspacePreferences,
+} from "./workspace";
 
 /** All three editors and Brand settings select from Buzz's existing Solo workspaces. */
 export function useEditorWorkspace(connection: RelaySnapshot) {
   const scope = connection.scope ?? "local-preview";
-  const preferences = connection.session.soloPreferences;
+  const preferences = workspacePreferences(connection.session);
   const snapshot = useSyncExternalStore(
     preferences.subscribe,
     preferences.snapshot,

@@ -20,6 +20,7 @@ import styles from "./native-apps.module.css";
 
 import { useEditorWorkspace } from "./useEditorWorkspace";
 import { EditorWorkspaceControl } from "./EditorWorkspaceControl";
+import { workspacePreferences } from "./workspace";
 
 type Ctx = Parameters<PluginModule["apply"]>[0];
 
@@ -144,7 +145,7 @@ export function useEditorConversation(
           );
         if (
           workspace.projectId &&
-          !current.session.soloPreferences
+          !workspacePreferences(current.session)
             .snapshot()
             .data?.sections.some((item) => item.id === workspace.projectId)
         )

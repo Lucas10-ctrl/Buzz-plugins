@@ -13,7 +13,11 @@ import { FilePlusIcon } from "../../../shared/design-system/icons/index";
 import { readView } from "../../../shared/view-state";
 import type { EditorStore } from "./pages-client";
 import { docChatLink, docTarget } from "./docs-route";
-import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
+import {
+  editorWorkspaceId,
+  editorWorkspaceKey,
+  workspacePreferences,
+} from "./workspace";
 import { useInEditorComposer } from "./editor-composer";
 import styles from "./new-doc-tool.module.css";
 
@@ -23,7 +27,7 @@ type Ctx = Parameters<PluginModule["apply"]>[0];
 export function chatDocWorkspace(ctx: Ctx, channelId: string): string {
   const { scope, session } = ctx.relay.snapshot();
   const community = scope ?? "local-preview";
-  const solo = session.soloPreferences.snapshot().data;
+  const solo = workspacePreferences(session).snapshot().data;
   const filed = solo?.assignments[channelId];
   if (filed && solo?.sections.some((item) => item.id === filed))
     return editorWorkspaceId(community, filed);

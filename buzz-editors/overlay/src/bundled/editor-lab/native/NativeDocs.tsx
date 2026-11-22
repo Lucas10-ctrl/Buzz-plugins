@@ -11,7 +11,7 @@ import type { PageNavigation } from "../../../features/navigation/service";
 import { Button } from "../../../shared/design-system/ui/Button";
 import { AlertDialog } from "../../../shared/design-system/ui/AlertDialog";
 import { WorkspaceControl } from "../../../features/solo/WorkspaceControl";
-import { editorWorkspaceId } from "./workspace";
+import { editorWorkspaceId, workspacePreferences } from "./workspace";
 import { FullPageSurface } from "../../../shared/design-system/ui/FullPageSurface";
 import {
   Docs,
@@ -220,7 +220,7 @@ function DocsView({
   const followable =
     linkedProject !== undefined &&
     (linkedProject === "" ||
-      !!session.soloPreferences
+      !!workspacePreferences(session)
         .snapshot()
         .data?.sections.some((item) => item.id === linkedProject));
   const { chooseWorkspace } = conversation;
