@@ -374,7 +374,11 @@ function createPosts(deps) {
 
   // A post that was being published when the engine stopped may or may not be
   // live; never send it again blindly.
-  db.prepare("UPDATE posts SET status='failed', error='Social Poster stopped while publishing this post. Check the account before you retry, so it is not posted twice.', updated_at=? WHERE status='publishing'").run(now());
+  // Called once this process knows it is the only engine running (a
+  // background --once check must not touch posts another engine is sending).
+  function recover() {
+    db.prepare("UPDATE posts SET status='failed', error='Social Poster stopped while publishing this post. Check the account before you retry, so it is not posted twice.', updated_at=? WHERE status='publishing'").run(now());
+  }
 
   /** Tells Notion once every channel of a post has a result. */
   function settle(group) {
@@ -382,7 +386,7 @@ function createPosts(deps) {
     if (rows.length && rows.every((r) => r.status === 'published' || r.status === 'failed')) onGroupState(group, groupStatus(rows), rows);
   }
 
-  return { settle, save, validate, getGroup, calendar, move, duplicate, remove, unschedule, retry, list, create, tick, errorText, publicRow, resolveAccounts, parseWhen };
+  return { recover, settle, save, validate, getGroup, calendar, move, duplicate, remove, unschedule, retry, list, create, tick, errorText, publicRow, resolveAccounts, parseWhen };
 }
 
 module.exports = { createPosts };

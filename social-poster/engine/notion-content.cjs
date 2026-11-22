@@ -42,7 +42,13 @@ function createNotionContent({ notion, db, media, posts, log, changed }) {
   /** Links a Notion database (or one of its views) by URL. */
   async function setDatabase({ url }) {
     const text = await notion.call('notion-fetch', { id: url });
-    const sources = [...text.matchAll(/collection:\/\/[0-9a-f-]+/gi)].map((m) => m[0]);
+    // A page can name several databases (its own, and ones above it in
+    // <ancestor-path>). Prefer one called a calendar, then any outside the
+    // ancestor list.
+    const body = text.replace(/<ancestor-path>[\s\S]*?<\/ancestor-path>/, '');
+    const named = [...text.matchAll(/url="(collection:\/\/[0-9a-f-]+)"[^>]*name="([^"]*)"/gi)];
+    const calendar = named.find((m) => /calendar/i.test(m[2]))?.[1];
+    const sources = [...new Set([calendar, ...[...body.matchAll(/collection:\/\/[0-9a-f-]+/gi)].map((m) => m[0]), ...[...text.matchAll(/collection:\/\/[0-9a-f-]+/gi)].map((m) => m[0])].filter(Boolean))];
     if (!sources.length) throw new Error('That link is not a Notion database. Open the database in Notion, copy its link and paste it here.');
     const views = [...text.matchAll(/view:\/\/[0-9a-f-]+/gi)].map((m) => m[0]);
     const title = (text.match(/<database[^>]*>([^<]{1,120})/) || text.match(/title["']?\s*[:=]\s*["']([^"']+)/) || [])[1] || 'Content calendar';

@@ -164,6 +164,12 @@ function createNotion({ getSetting, setSetting, callbackBase, openInBrowser, log
     const { result } = await rpc('tools/call', { name, arguments: args });
     const text = (result?.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
     if (result?.isError) throw new Error(`Notion: ${text.slice(0, 500)}`);
+    // Newer versions of Notion's server wrap the page in JSON
+    // ({ title, url, text }); the page itself is in "text".
+    try {
+      const j = JSON.parse(text);
+      if (j && typeof j.text === 'string') return j.text;
+    } catch {}
     return text;
   }
 

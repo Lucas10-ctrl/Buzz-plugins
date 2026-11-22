@@ -690,6 +690,7 @@ process.on('unhandledRejection', (err) => log('[unhandled]', err?.stack || err))
   }
   try {
     await listen();
+    posts.recover();
   } catch (err) {
     log(`Social Poster could not use port ${PORT}: ${err.message}`);
     emit('fatal', { message: `Port ${PORT} is busy: ${err.message}` });
