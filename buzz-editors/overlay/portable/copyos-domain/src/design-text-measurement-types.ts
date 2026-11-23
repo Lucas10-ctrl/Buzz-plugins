@@ -49,6 +49,8 @@ export interface DesignTextMeasurer {
 /** Explicit finite work limits; omitted values use the native text/line schema limits. */
 export interface DesignTextMeasurerOptions {
   fonts: readonly DesignMeasurementFont[]
+  /** Catalog families tried after a layer's own families for characters they lack, such as symbol fonts. */
+  fallbackFamilies?: readonly string[]
   maxTextLength?: number
   maxLines?: number
 }

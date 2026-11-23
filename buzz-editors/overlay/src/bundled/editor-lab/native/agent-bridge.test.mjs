@@ -876,3 +876,31 @@ it("refuses agent doc creation into a different workspace than the conversation'
     }),
   ).rejects.toThrow("another editor workspace");
 });
+
+it("gives agents the shared Canvas surface: Figma-style scripts, ad templates, the guide and exports", async () => {
+  bind();
+  const canvas = bridge.canvasTool();
+  expect(canvas.description).toContain("runCanvasScript");
+  const call = async (operation, input = {}) => {
+    const value = await canvas.call(agent, context, { operation, input });
+    return typeof value === "string" && value.startsWith("{") ? JSON.parse(value) : value;
+  };
+  expect(await call("readCanvasGuide")).toContain("# Canvas for agents");
+  const { templates } = await call("listDesignTemplates", { query: "benefit" });
+  expect(templates.map((template) => template.title)).toContain("Ad / Benefit callouts · 1:1");
+  expect(templates.every((template) => template.thumbnail === undefined)).toBe(true);
+  let design = await call("createDesign", { title: "Ads" });
+  const inserted = await call("insertDesignTemplate", {
+    designId: design.id,
+    expectedRevision: design.revision,
+    templateId: templates.find((template) => template.title === "Ad / Benefit callouts · 1:1").id,
+  });
+  const run = await call("runCanvasScript", {
+    designId: design.id,
+    expectedRevision: inserted.document.revision,
+    code: "const t = figma.currentPage.findOne(n => n.type === 'TEXT' && n.name === 'headline'); t.characters = 'Breakfast, sorted'; return t.characters",
+  });
+  expect(run.result).toBe("Breakfast, sorted");
+  const exported = await call("exportDesign", { designId: design.id, scale: 1 });
+  expect([exported.width, exported.height, exported.dataBase64]).toEqual([1080, 1080, undefined]);
+});

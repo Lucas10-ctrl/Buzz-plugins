@@ -195,3 +195,41 @@ export async function measureDesignText(document: CopyOSDesignDocument, options:
   }
   throw new DesignMeasureTextError('nonconvergent', 'Text layout did not converge within the measurement pass budget')
 }
+
+/** Synchronous, lenient measurement for scripted Canvas edits: text the catalog cannot measure keeps its stored size and is reported.
+ * @param document - Valid native scene.
+ * @param measurer - Paragraph engine over the fonts the script has loaded.
+ * @param maxPasses - Reflow pass budget.
+ * @returns The staged document and the text layers left unmeasured, with the reason.
+ */
+export function measureDesignTextSync(document: CopyOSDesignDocument, measurer: Pick<DesignTextMeasurer, 'measure' | 'engine'>,
+  maxPasses = 16): { document: CopyOSDesignDocument; unmeasured: { id: string; code: string; family?: string | undefined }[] } {
+  const options: DesignMeasureTextOptions = { maxPasses, maxJobs: 20000, maxContexts: 20000 }
+  let current = document
+  const unmeasured = new Map<string, { id: string; code: string; family?: string | undefined }>()
+  const values = new Map<string, Measured | null>()
+  for (let pass = 1; pass <= maxPasses; pass++) {
+    const { jobs } = collect(current, options), results: { job: Job; result: Measured }[] = []
+    for (const job of jobs) {
+      if (unmeasured.has(keyFor(job)) || ready(job, measurer.engine)) continue
+      const input = JSON.stringify([designTextLayoutSignature(job.node), designTextBaselineSignature(job.node)])
+      let result = values.get(input)
+      if (result === undefined) {
+        const value = measurer.measure(job.node)
+        if (value.state !== 'measured') {
+          values.set(input, null)
+          unmeasured.set(keyFor(job), { id: job.ownerId, code: value.code, family: value.family })
+          continue
+        }
+        try { validResult(job, value, measurer.engine) } catch { values.set(input, null); continue }
+        result = value
+        values.set(input, result)
+      }
+      if (result === null) { unmeasured.set(keyFor(job), { id: job.ownerId, code: 'invalid-result' }); continue }
+      results.push({ job, result })
+    }
+    if (!results.length) break
+    current = stage(current, results)
+  }
+  return { document: current, unmeasured: [...unmeasured.values()] }
+}

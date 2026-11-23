@@ -254,6 +254,12 @@ try {
     join(staging, "copyos-domain/fonts"),
     { recursive: true, mode: constants.COPYFILE_FICLONE },
   );
+  // Canvas ad templates the store seeds into the template library (editor-host/src/canvas-store.ts).
+  await cp(
+    join(root, "portable/editor-host/canvas-templates/library"),
+    join(staging, "editor-host/canvas-templates/library"),
+    { recursive: true, mode: constants.COPYFILE_FICLONE },
+  );
   await cp(
     join(root, "portable/page-workflows"),
     join(staging, "page-workflows"),

@@ -15,6 +15,8 @@ export interface DesignRasterRequest {
   maxWidth: number
   /** Longest output height in pixels after scaling; taller regions scale down further. */
   maxHeight: number
+  /** Largest output pixels per CSS pixel; omitted keeps 2×. Agent exports ask for exactly 1×, 2× or 3×. */
+  scaleLimit?: number | undefined
   /** Optional vertical region of the artboard, for long pages; omitted renders the whole artboard. */
   region?: { top: number; height: number } | undefined
   /** Read one stored project image by its file name inside `assets/images/`. */
@@ -101,10 +103,11 @@ export function designSvgSeparableMorphology(svg: string): string {
  * @param fonts - Explicit font faces; the first face's family is the substitute for unknown families.
  * @returns The renderer.
  */
-export async function createDesignRasterizer(fonts: readonly DesignMeasurementFont[]): Promise<DesignRasterizer> {
+export async function createDesignRasterizer(fonts: readonly DesignMeasurementFont[],
+  options: { fallbackFamilies?: readonly string[] } = {}): Promise<DesignRasterizer> {
   const fallbackFamily = fonts[0]?.family
   if (fallbackFamily === undefined) throw new Error('Provide at least one raster font')
-  const measurer = await createDesignTextMeasurer({ fonts })
+  const measurer = await createDesignTextMeasurer({ fonts, ...(options.fallbackFamilies ? { fallbackFamilies: options.fallbackFamilies } : {}) })
   const known = (family: string): boolean => fonts.some(face => face.family.toLowerCase() === family.toLowerCase())
   const substitute = (node: CopyOSDesignNode): CopyOSDesignNode => ({ ...node, fontFamily: fallbackFamily,
     textRuns: node.textRuns?.map(run => run.style.fontFamily === undefined || known(firstFamily(run.style.fontFamily)) ? run
@@ -130,7 +133,7 @@ export async function createDesignRasterizer(fonts: readonly DesignMeasurementFo
       }, url => parseDesignImageAssetReference(url) !== undefined)
       const top = Math.max(0, Math.min(artboard.height, request.region?.top ?? 0))
       const height = Math.max(1, Math.min(artboard.height - top, request.region?.height ?? artboard.height))
-      const scale = Math.min(2, request.maxWidth / artboard.width, request.maxHeight / height)
+      const scale = Math.min(request.scaleLimit ?? 2, request.maxWidth / artboard.width, request.maxHeight / height)
       const width = Math.max(1, Math.round(artboard.width * scale)), outputHeight = Math.max(1, Math.round(height * scale))
       // Text drawings keep at least one pixel per CSS pixel so small type stays legible after the final resize.
       const textScale = Math.min(4, Math.max(1, Math.ceil(scale * 2) / 2))

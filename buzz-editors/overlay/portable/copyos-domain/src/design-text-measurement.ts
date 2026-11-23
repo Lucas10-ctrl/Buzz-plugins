@@ -61,7 +61,7 @@ export async function createDesignTextMeasurer(options: DesignTextMeasurerOption
   const maxTextLength = options.maxTextLength ?? 200000, maxLines = options.maxLines ?? 200000
   if (!Number.isInteger(maxTextLength) || maxTextLength < 1 || maxTextLength > 200000 ||
     !Number.isInteger(maxLines) || maxLines < 1 || maxLines > 200000) throw new Error('Invalid text measurement budget')
-  if (!options.fonts.length || options.fonts.length > 32) throw new Error('Provide 1–32 explicit measurement fonts')
+  if (!options.fonts.length || options.fonts.length > 128) throw new Error('Provide 1–128 explicit measurement fonts')
   let bytes = 0
   const identities = new Set<string>()
   for (const font of options.fonts) {
@@ -167,8 +167,17 @@ export async function createDesignTextMeasurer(options: DesignTextMeasurerOption
       if (!requested.length) return { state: 'unavailable', code: 'missing-family', family }
       const primary = requested.find(font => font.weight === value.fontWeight && font.style === value.fontStyle)
       if (!primary) return { state: 'unavailable', code: 'missing-style', family }
-      const fallback = names.slice(1).flatMap(name => catalog.filter(font => font.family.toLowerCase() === name.toLowerCase() &&
-          font.weight === value.fontWeight && font.style === value.fontStyle))
+      // Fallback families take the exact weight when they have it, otherwise their nearest weight in the same style.
+      const nearest = (name: string): RegisteredFace[] => {
+        const faces = catalog.filter(font => font.family.toLowerCase() === name.toLowerCase() && font.style === value.fontStyle)
+        const exact = faces.filter(font => font.weight === value.fontWeight)
+        if (exact.length) return exact
+        const best = faces.reduce<RegisteredFace | undefined>((found, font) =>
+          !found || Math.abs(font.weight - value.fontWeight) < Math.abs(found.weight - value.fontWeight) ? font : found, undefined)
+        return best ? [best] : []
+      }
+      const fallback = [...names.slice(1), ...(options.fallbackFamilies ?? [])]
+        .filter(name => name.toLowerCase() !== family.toLowerCase()).flatMap(nearest)
       styles.push({ fontFamilies: [primary, ...fallback].map(font => font.alias), fontSize: value.fontSize,
         fontStyle: { weight: { value: value.fontWeight }, slant: value.fontStyle === 'italic' ? ck.FontSlant.Italic : ck.FontSlant.Upright },
         fontFeatures: value.fontFeatures.map(feature => ({ name: feature.tag, value: feature.value })),

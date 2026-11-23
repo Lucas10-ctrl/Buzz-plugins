@@ -429,6 +429,10 @@ export class EditorRepository {
             "createCopyAsset",
             "copyComparableImages",
             "insertDesignTemplate",
+            "placeDesignImage",
+            "runCanvasScript",
+            "exportDesign",
+            "readCanvasGuide",
           ].includes(operation)
         )
           return this.canvas.call(operation, input);

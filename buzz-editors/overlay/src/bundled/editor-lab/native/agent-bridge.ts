@@ -3,6 +3,12 @@ import type { AddedTool } from "../../../buzz-mcp/session-tools";
 import type { EditorStore } from "./pages-client";
 import { EditorComposerBridge } from "./editor-composer";
 import { canvasWebsiteGuide } from "./canvas-website";
+import {
+  CANVAS_AGENT_DESCRIPTION,
+  CANVAS_AGENT_GUIDE,
+  CANVAS_AGENT_OPERATIONS,
+  canvasAgentDefaults,
+} from "../../../../portable/editor-host/src/canvas-agent";
 import { docChatLink } from "./docs-route";
 import { readView } from "../../../shared/view-state";
 import {
@@ -320,30 +326,15 @@ export class EditorAgentBridge {
     };
   }
   canvasTool(): AddedTool {
-    const allowed = [
-      "listDesigns",
-      "readDesign",
-      "createDesign",
-      "editDesign",
-      "listDesignComments",
-      "addDesignComment",
-      "setDesignCommentStatus",
-      "listDesignTemplates",
-      "readDesignTemplate",
-      "viewDesign",
-      "inspectDesign",
-      "getStyleGuide",
-      "previewDesignPage",
-      "buildDesignPage",
-      "reviewDesignPageUpdate",
-      "applyDesignPageUpdate",
+    // The shared agent surface (portable/editor-host/src/canvas-agent.ts) plus Buzz's own copy, comparison and guide operations.
+    const allowed: string[] = [
+      ...CANVAS_AGENT_OPERATIONS,
       "readWorkflowGuide",
       "listCopy",
       "readCopy",
       "createCopy",
       "listWorkspaces",
       "listComparableDesigns",
-      "insertDesignTemplate",
       "copyComparableImages",
     ];
     return {
@@ -351,7 +342,8 @@ export class EditorAgentBridge {
       description:
         "Build from copy can read the selected copy with readCopy (copyId); listCopy reports assets/invalid, and createCopy takes title,label,body. Use the saved selectedVariantId body verbatim. Only the owner’s structured Build from copy request enables listWorkspaces and listComparableDesigns. Their offset/limit pages return nextOffset; use the opaque workspaceRef for read-only readDesign/inspectDesign/viewDesign/getStyleGuide comparisons. copyComparableImages takes workspaceRef and urls and copies original image references into the current workspace without editing the source. insertDesignTemplate takes designId,templateId,expectedRevision,optional pageId; it uses the original clipboard importer, preserving manual artboards, styles, variables, components and embedded images. Its result contains document,selectedIds. " +
         "inspectDesign is the original byte-bounded inspector: designId plus section (overview, layers, authored-layers, children, design-system, semantics-structure, fills, text-runs, field), optional owner_id, node_ids_json, instance_path_json, query, revision, limit (1..100), max_bytes (16384..65536), cursor, field_ref and original resource selectors. Follow next_cursor with identical selectors; retrieve record_ref/field_refs through section:field. Prefer this over the explicitly unbounded readDesign for large scenes. " +
-        "Use buzz_brand readBrandContext before branded work. Read and edit the original Canvas in the owner's editor conversation. readWorkflowGuide takes guide:canvas-to-website and returns the complete building workflow. listDesigns returns saved designs; readDesign takes designId and returns nodes, variables and revision. editDesign takes designId, expectedRevision and changes using the original Canvas batch format (upsertNodes, deleteNodeIds, variables). viewDesign returns a PNG for image-capable agents: designId, optional artboardId, expectedRevision, top, height (up to 2400 CSS px), maxWidth (320..2000). Its notes identify font substitutions and missing images. getStyleGuide reads workspace branding. previewDesignPage takes designId,nodeId,expectedRevision; buildDesignPage takes those plus its reviewed previewHash. For linked updates use reviewDesignPageUpdate then applyDesignPageUpdate with expectedPageRevision, previewHash and the reviewed resolution/resolutions. Conversion is a starting point; use buzz_pages to finish and verify the saved website. Preserve unrelated manual work. createDesign takes title. Comment/template operations use designId/commentId/templateId and their original fields. workspaceId is supplied by the conversation.",
+        "Use buzz_brand readBrandContext before branded work. readWorkflowGuide takes guide:canvas-to-website and returns the complete page-building workflow; use buzz_pages to finish and verify a converted website. Preserve unrelated manual work. " +
+        CANVAS_AGENT_DESCRIPTION.replace("workspaceId is supplied by the host.", "workspaceId is supplied by the conversation."),
       inputSchema: {
         type: "object",
         properties: {
@@ -374,9 +366,13 @@ export class EditorAgentBridge {
           !allowed.includes(args.operation)
         )
           throw new Error("Unknown Canvas operation");
-        const input = args.input ?? {};
-        if (typeof input !== "object" || Array.isArray(input))
+        const given = args.input ?? {};
+        if (typeof given !== "object" || Array.isArray(given))
           throw new Error("input must be an object");
+        const input = canvasAgentDefaults(
+          args.operation,
+          given as Record<string, unknown>,
+        );
         if ("workspaceId" in input && input.workspaceId !== binding.workspaceId)
           throw new Error("Workspace differs from this editor conversation");
         if (
@@ -408,6 +404,13 @@ export class EditorAgentBridge {
             type: "image/png",
             text: JSON.stringify(metadata),
           };
+        }
+        if (args.operation === "readCanvasGuide") return CANVAS_AGENT_GUIDE;
+        if (args.operation === "exportDesign") {
+          const { dataBase64: _, ...exported } = await this.store.call<
+            { dataBase64: string } & Record<string, unknown>
+          >(args.operation, { ...input, workspaceId: binding.workspaceId });
+          return JSON.stringify(exported);
         }
         if (args.operation === "inspectDesign")
           return JSON.stringify(
