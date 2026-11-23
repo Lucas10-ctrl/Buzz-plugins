@@ -123,6 +123,7 @@ async function collectPage(page) {
   });
 }
 
+let browser = null;
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) {
@@ -138,7 +139,7 @@ try {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 
   const { chromium } = loadPlaywright();
-  const browser = await launchChromium(chromium);
+  browser = await launchChromium(chromium);
   const page = await browser.newPage({ viewport: { width: args.width, height: 900 }, deviceScaleFactor: 1 });
 
   const queue = [{ url: startUrl, depth: 0, from: "" }];
@@ -204,8 +205,6 @@ try {
     }
   }
 
-  await browser.close();
-
   const result = {
     label: args.label,
     url: startUrl,
@@ -223,5 +222,7 @@ try {
   console.log(jsonFile);
 } catch (error) {
   console.error(`route-crawl failed: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await browser?.close().catch(() => {});
 }
