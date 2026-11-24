@@ -209,6 +209,7 @@ async function downloadAll(entries, ctx, args, refererUrl) {
   return results;
 }
 
+let browser = null;
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || (!args.url && !args.recon)) {
@@ -228,7 +229,6 @@ try {
   };
 
   let ctx = null;
-  let browser = null;
   if (!args.reconOnly) {
     const pw = loadPlaywright();
     browser = await launchChromium(pw.chromium);
@@ -308,7 +308,6 @@ try {
     assets: results,
   }, null, 2)}\n`);
 
-  if (browser) await browser.close();
   console.log(`✅ 下载 ${okCount} 成功 / ${errCount} 失败 → ${path.resolve(args.outDir)}`);
   if (fontCssBlocks.length) console.log(`▸ 自托管字体样式: ${path.join(args.outDir, "fonts/fonts.css")} (页面 <link> 引入即可)`);
   const failedFonts = results.filter((r) => r.kind === "font" && r.status === "error");
@@ -316,5 +315,7 @@ try {
   console.log(manifestFile);
 } catch (error) {
   console.error(`asset-harvest failed: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await browser?.close().catch(() => {});
 }

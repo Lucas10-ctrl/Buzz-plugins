@@ -39,6 +39,7 @@ function shouldSave(resourceType, contentType) {
   return /json|text|graphql|javascript/i.test(contentType || "");
 }
 
+let browser = null;
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) {
@@ -51,7 +52,7 @@ try {
   fs.mkdirSync(fixturesDir, { recursive: true });
 
   const { chromium } = loadPlaywright();
-  const browser = await launchChromium(chromium);
+  browser = await launchChromium(chromium);
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   const requests = [];
@@ -104,7 +105,6 @@ try {
   await page.goto(args.url, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForLoadState("networkidle", { timeout: args.waitMs }).catch(() => {});
   if (args.waitMs > 0) await page.waitForTimeout(args.waitMs);
-  await browser.close();
 
   const manifest = {
     label: args.label,
@@ -122,5 +122,7 @@ try {
   console.log(manifestFile);
 } catch (error) {
   console.error(`network-capture failed: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await browser?.close().catch(() => {});
 }

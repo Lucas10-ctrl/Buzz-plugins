@@ -232,6 +232,7 @@ async function captureAction(page, outDir, index, action, before) {
   };
 }
 
+let browser = null;
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) {
@@ -243,7 +244,7 @@ try {
   fs.mkdirSync(path.join(outDir, "screenshots"), { recursive: true });
 
   const { chromium } = loadPlaywright();
-  const browser = await launchChromium(chromium);
+  browser = await launchChromium(chromium);
   const network = [];
   const consoleErrors = [];
 
@@ -281,8 +282,6 @@ try {
     }
   }
 
-  await browser.close();
-
   const changedCount = results.filter((action) => action.changed).length;
   const findings = [
     `${discovered.interactive.length} visible interactive candidates discovered`,
@@ -309,5 +308,7 @@ try {
   console.log(jsonFile);
 } catch (error) {
   console.error(`interaction-probe failed: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await browser?.close().catch(() => {});
 }

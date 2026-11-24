@@ -122,6 +122,7 @@ async function compareInBrowser(page, original, clone, threshold) {
   }, { original, clone, threshold });
 }
 
+let browser = null;
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.original || !args.clone) {
@@ -130,10 +131,9 @@ try {
   }
 
   const { chromium } = loadPlaywright();
-  const browser = await launchChromium(chromium);
+  browser = await launchChromium(chromium);
   const page = await browser.newPage();
   const result = await compareInBrowser(page, imageDataUrl(args.original), imageDataUrl(args.clone), args.threshold);
-  await browser.close();
 
   const diffDataUrl = result.diffPngDataUrl;
   delete result.diffPngDataUrl;
@@ -156,5 +156,7 @@ try {
   console.log(path.resolve(args.out));
 } catch (error) {
   console.error(`visual-diff failed: ${error.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  await browser?.close().catch(() => {});
 }
