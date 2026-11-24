@@ -5,9 +5,10 @@ import { EditorComposerBridge } from "./editor-composer";
 import { canvasWebsiteGuide } from "./canvas-website";
 import {
   CANVAS_AGENT_DESCRIPTION,
-  CANVAS_AGENT_GUIDE,
   CANVAS_AGENT_OPERATIONS,
+  CANVAS_GUIDE_TOPIC_NAMES,
   canvasAgentDefaults,
+  canvasGuideTopic,
 } from "../../../../portable/editor-host/src/canvas-agent";
 import { docChatLink } from "./docs-route";
 import { readView } from "../../../shared/view-state";
@@ -405,7 +406,24 @@ export class EditorAgentBridge {
             text: JSON.stringify(metadata),
           };
         }
-        if (args.operation === "readCanvasGuide") return CANVAS_AGENT_GUIDE;
+        if (args.operation === "readCanvasGuide") {
+          // The Canvas design guide (Canvas's figma-use), one topic per call; canvas-use by default lists the others.
+          if (
+            Object.keys(input).some(
+              (key) => key !== "topic" && key !== "workspaceId",
+            ) ||
+            ("topic" in input && typeof input.topic !== "string")
+          )
+            throw new Error("readCanvasGuide takes only an optional topic");
+          const topic =
+            typeof input.topic === "string" ? input.topic : "canvas-use";
+          const guide = canvasGuideTopic(topic);
+          if (guide === undefined)
+            throw new Error(
+              `No guide topic "${topic}". Topics: ${CANVAS_GUIDE_TOPIC_NAMES.join(", ")}`,
+            );
+          return guide;
+        }
         if (args.operation === "exportDesign") {
           const { dataBase64: _, ...exported } = await this.store.call<
             { dataBase64: string } & Record<string, unknown>

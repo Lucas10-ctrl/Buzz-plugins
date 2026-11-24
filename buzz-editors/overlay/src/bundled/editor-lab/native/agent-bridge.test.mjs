@@ -885,7 +885,16 @@ it("gives agents the shared Canvas surface: Figma-style scripts, ad templates, t
     const value = await canvas.call(agent, context, { operation, input });
     return typeof value === "string" && value.startsWith("{") ? JSON.parse(value) : value;
   };
-  expect(await call("readCanvasGuide")).toContain("# Canvas for agents");
+  const guide = await call("readCanvasGuide");
+  expect(guide).toContain("# canvas-use");
+  expect(guide).toContain("- generate-design:");
+  expect(await call("readCanvasGuide", { topic: "gotchas" })).toContain("# gotchas");
+  await expect(call("readCanvasGuide", { topic: "nope" })).rejects.toThrow("No guide topic");
+  expect(canvas.inputSchema.properties.operation.enum).toEqual(
+    expect.arrayContaining(["getDesignMetadata", "listDesignIcons", "uploadDesignFont"]),
+  );
+  const { icons } = await call("listDesignIcons", { query: "search" });
+  expect(icons.length).toBeGreaterThan(0);
   const { templates } = await call("listDesignTemplates", { query: "benefit" });
   expect(templates.map((template) => template.title)).toContain("Ad / Benefit callouts · 1:1");
   expect(templates.every((template) => template.thumbnail === undefined)).toBe(true);
@@ -901,6 +910,8 @@ it("gives agents the shared Canvas surface: Figma-style scripts, ad templates, t
     code: "const t = figma.currentPage.findOne(n => n.type === 'TEXT' && n.name === 'headline'); t.characters = 'Breakfast, sorted'; return t.characters",
   });
   expect(run.result).toBe("Breakfast, sorted");
+  const { metadata } = await call("getDesignMetadata", { designId: design.id, depth: 2 });
+  expect(metadata).toContain("<");
   const exported = await call("exportDesign", { designId: design.id, scale: 1 });
   expect([exported.width, exported.height, exported.dataBase64]).toEqual([1080, 1080, undefined]);
 });

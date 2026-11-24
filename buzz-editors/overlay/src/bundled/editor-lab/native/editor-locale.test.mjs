@@ -60,4 +60,6 @@ it("retains original UI labels and resolves Canvas editing through the native to
   expect(prompt).toContain("buzz_canvas");
   expect(prompt).toContain("expectedRevision");
   expect(prompt).toContain("Preserve layer identities");
+  expect(prompt).toContain("buzz_canvas operation readCanvasGuide");
+  expect(prompt).not.toContain("canvas://");
 });
