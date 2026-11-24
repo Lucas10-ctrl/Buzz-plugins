@@ -4,6 +4,8 @@ export { designImageAssetPaths, designImageAssetFiles, rewriteDesignImageAssetPa
 export { designEditableTextSvg, type DesignSvgTextLine, type DesignSvgTextMeasurer, type DesignSvgTextOutliner } from './design-svg-text.ts'
 export { designPageLinksValid } from './design-page-links.ts'
 export { designPathBounds, type DesignPathBounds } from './design-boolean-geometry.ts'
+import { designImageFiltersActive, designImageFilterPrimitives } from './design-image-filters.ts'
+export { designImageFiltersActive, designImageFilterPrimitives, designImageFilterPixels } from './design-image-filters.ts'
 export { designBooleansDocumentValid } from './design-boolean-validation.ts'
 import { projectDesignBooleanGeometry, resizeDesignBooleanOperands } from './design-boolean.ts'
 export { designBooleanSelection, createDesignBoolean, setDesignBooleanOperation, ungroupDesignBoolean, flattenDesignBoolean, fitDesignBooleans, projectDesignBooleanGeometry, type DesignBooleanSelectionReason } from './design-boolean.ts'
@@ -944,6 +946,7 @@ export function exportDesignSvg(
     editableText?: DesignSvgTextMeasurer
     textOutline?: DesignSvgTextOutliner
     region?: DesignVisualBox
+    backdrop?: DesignSvgBackdrop
   } = {},
 ): string {
   if (document.nodes.some(node => node.pageLink && (options.artboard === undefined ? pageId === undefined ||
@@ -957,7 +960,7 @@ export function exportDesignSvg(
     (pageId === undefined || (node.pageId ?? document.pages?.[0]?.id ?? '') === pageId))
   // An artboard export is its frame rectangle; effects outside it are clipped like a placed ad.
   const { x, y, width, height } = artboard ? artboard : createDesignVisualBounds(scene).roots(roots)
-  const renderer = designSvgRenderer(scene, options.editableText, options.textOutline, options.region)
+  const renderer = designSvgRenderer(scene, options.editableText, options.textOutline, options.region, options.backdrop)
   const layers = roots.map(node => renderer.render(node, new Set(), undefined, '', options.links ?? false)).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${x} ${y} ${width} ${height}"><title>${escapeXml(document.title)}</title><defs>${[...renderer.definitions.values()].join('')}</defs>${layers}</svg>`
 }
@@ -1001,9 +1004,17 @@ function designSvgBoxMeetsRegion(matrix: DesignSvgMatrix, bounds: DesignNodeVisu
   return Math.min(...xs) <= region.x + region.width && Math.max(...xs) >= region.x &&
     Math.min(...ys) <= region.y + region.height && Math.max(...ys) >= region.y
 }
+/**
+ * Markup painted behind one layer, inside its shape and under its own fills and effects, in the layer's local coordinates. The host
+ * raster uses it for background blur (browsers have no SVG backdrop input); return undefined for layers without one.
+ * @param node - Effective layer.
+ * @param matrix - Layer-local to scene coordinates.
+ * @param renderId - Layer identity in its rendered context; equals the stored id outside linked instances.
+ */
+export type DesignSvgBackdrop = (node: CopyOSDesignNode, matrix: DesignSvgMatrix, renderId: string) => string | undefined
 /** Shared paint/filter definitions keep sampled sources free of nested definition copies or foreignObject use shadow trees. */
 function designSvgRenderer(scene: ReturnType<typeof createDesignRenderScene>, editableText?: DesignSvgTextMeasurer,
-  textOutline?: DesignSvgTextOutliner, region?: DesignVisualBox): {
+  textOutline?: DesignSvgTextOutliner, region?: DesignVisualBox, backdrop?: DesignSvgBackdrop): {
   render: (node: CopyOSDesignNode, seen: Set<string>, context?: DesignRenderContext, prefix?: string, linksEnabled?: boolean,
     parentMatrix?: DesignSvgMatrix) => string
   definitions: Map<string, string>
@@ -1012,6 +1023,46 @@ function designSvgRenderer(scene: ReturnType<typeof createDesignRenderScene>, ed
   const definitions = new Map<string, string>()
   const contextIds=new WeakMap<DesignRenderContext,number>()
   let nextContextId=0
+  /**
+   * Paint siblings with Figma masks: a visible `mask` sibling is not drawn but masks every later sibling until the parent ends or
+   * the next mask starts a new group. Mask content keeps the sibling's own transform, so it shares the masked group's coordinates.
+   */
+  const renderSiblings = (siblings: readonly CopyOSDesignNode[], childPrefix: string, context: DesignRenderContext,
+    draw: (node: CopyOSDesignNode) => string): string => {
+    if (!siblings.some(sibling => sibling.mask && sibling.visible)) return siblings.map(draw).join('')
+    let output = '', masked = '', maskId: string | undefined
+    const close = (): void => {
+      output += maskId === undefined ? masked : `<g mask="url(#${escapeXml(maskId)})">${masked}</g>`
+      masked = ''
+    }
+    for (const sibling of siblings) {
+      if (!(sibling.mask && sibling.visible)) { masked += draw(sibling); continue }
+      close()
+      maskId = `mask-${childPrefix}${sibling.id}`
+      const type = sibling.maskType ?? 'alpha'
+      // A vector mask is the layer's outline: opaque fills, no layer opacity, and any partial alpha raised to full.
+      const shape = type === 'vector' ? { ...sibling, opacity: 1, blendMode: undefined,
+        ...(['group', 'text'].includes(sibling.kind) ? {} : { fills: [{ id: sibling.id, color: '#000000', opacity: 1, visible: true, variableId: null }] }) }
+        : { ...sibling, blendMode: undefined }
+      const bounds = visualBounds.node(sibling, context), box = bounds.filter ?? bounds.visual
+      const matrix = designSvgNodeMatrix([1, 0, 0, 1, 0, 0], sibling)
+      let region = ''
+      if (box) {
+        const corners = [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height], [box.x + box.width, box.y + box.height]] as const
+        const xs = corners.map(([x, y]) => matrix[0] * x + matrix[2] * y + matrix[4]), ys = corners.map(([x, y]) => matrix[1] * x + matrix[3] * y + matrix[5])
+        const left = Math.min(...xs) - 1, top = Math.min(...ys) - 1
+        region = ` x="${left}" y="${top}" width="${Math.max(...xs) + 1 - left}" height="${Math.max(...ys) + 1 - top}"`
+      }
+      let content = draw(shape)
+      if (type === 'vector') {
+        definitions.set(`${maskId}-outline`, `<filter id="${escapeXml(maskId)}-outline" filterUnits="userSpaceOnUse"${region}><feComponentTransfer><feFuncA type="linear" slope="255" intercept="0"/></feComponentTransfer></filter>`)
+        content = `<g filter="url(#${escapeXml(maskId)}-outline)">${content}</g>`
+      }
+      definitions.set(maskId, `<mask id="${escapeXml(maskId)}" maskUnits="userSpaceOnUse"${region || ' x="0" y="0" width="0" height="0"'}${type === 'luminance' ? '' : ' style="mask-type:alpha"'}>${content}</mask>`)
+    }
+    close()
+    return output
+  }
   const render = (
     node: CopyOSDesignNode,
     seen: Set<string>,
@@ -1087,8 +1138,9 @@ function designSvgRenderer(scene: ReturnType<typeof createDesignRenderScene>, ed
     const layerBlend = designLayerBlendStyle(node)
     const exteriorStroke = node.clip && base.strokeAlign !== 'inside' &&
       ['rectangle', 'ellipse', 'frame', 'component', 'component-set', 'image'].includes(base.kind) ? strokeShape : ''
-    const children = designChildrenInPaintOrder(base, base.kind === 'boolean' ? [] : current.children.get(base.id) ?? [])
-      .map(n => render(n, visited, current, source ? renderId + '-' : prefix, linksEnabled, childMatrix)).join('')
+    const childPrefix = source ? renderId + '-' : prefix
+    const children = renderSiblings(designChildrenInPaintOrder(base, base.kind === 'boolean' ? [] : current.children.get(base.id) ?? []),
+      childPrefix, current, n => render(n, visited, current, childPrefix, linksEnabled, childMatrix))
     const clip = `clip-${renderId}`
     const scale = source ? `scale(${node.width / source.width} ${node.height / source.height})` : ''
     const filterNode = { ...base, clip: node.clip }
@@ -1101,8 +1153,8 @@ function designSvgRenderer(scene: ReturnType<typeof createDesignRenderScene>, ed
     const inner = designEffectsPassFilter(filterNode, `inner-${renderId}`, 'inner-shadow', undefined, sourceBounds)
     const filterMarkup = (filter: ReturnType<typeof designEffectsFilter>): string => filter ? `<filter id="${escapeXml(filter.id)}" filterUnits="userSpaceOnUse" x="${filter.x}" y="${filter.y}" width="${filter.width}" height="${filter.height}" color-interpolation-filters="sRGB">${filter.markup}</filter>` : ''
     const inertChildren = linksEnabled && base.kind === 'text' && inner ?
-      designChildrenInPaintOrder(base, current.children.get(base.id) ?? [])
-        .map(n => render(n, visited, current, source ? renderId + '-' : prefix, false, childMatrix)).join('') : children
+      renderSiblings(designChildrenInPaintOrder(base, current.children.get(base.id) ?? []), childPrefix, current,
+        n => render(n, visited, current, childPrefix, false, childMatrix)) : children
     const sourceOriginal = inertChildren === children ? original :
       `<g${node.clip ? ` clip-path="url(#${clip})"` : ''}><g transform="${scale}">${sourceFill}${inertChildren}</g></g>${stroke}`
     const pass = (filter: ReturnType<typeof designEffectsFilter>): string => filter ? `<g aria-hidden="true" pointer-events="none" filter="url(#${escapeXml(filter.id)})">${sourceOriginal}</g>` : ''
@@ -1132,16 +1184,29 @@ function designSvgRenderer(scene: ReturnType<typeof createDesignRenderScene>, ed
       content = `<g filter="url(#${escapeXml(layerBlur.id)})">${content}</g>`
     }
     definitions.set(`resources-${renderId}`, `${gradient}${paintDefinitions}${filters}<clipPath id="${clip}"><path d="${designRectanglePath({ ...base, width: node.width, height: node.height })}"/></clipPath>`)
+    const behind = backdrop?.(node, matrix, renderId)
+    let backdropLayer = ''
+    if (behind) {
+      const backdropClip = `backdrop-clip-${renderId}`
+      const vector = (base.kind === 'path' || base.kind === 'boolean') ? base.pathData : undefined
+      const outline = base.kind === 'ellipse'
+        ? `<ellipse cx="${node.width / 2}" cy="${node.height / 2}" rx="${node.width / 2}" ry="${node.height / 2}"/>`
+        : vector
+          ? vector.paths.map(path => `<path d="${escapeXml(path.d)}" clip-rule="${path.fillRule}" transform="scale(${node.width / vector.width} ${node.height / vector.height})"/>`).join('')
+          : `<path d="${designRectanglePath({ ...base, width: node.width, height: node.height })}"/>`
+      definitions.set(backdropClip, `<clipPath id="${escapeXml(backdropClip)}">${outline}</clipPath>`)
+      backdropLayer = `<g clip-path="url(#${escapeXml(backdropClip)})">${behind}</g>`
+    }
     const linkOverlay = linksEnabled && node.opacity > 0 ? designTextLinkSvg(base) : ''
     const interaction = linkOverlay ? `<g${node.clip ? ` clip-path="url(#${clip})"` : ''}><g transform="${scale}">${linkOverlay}</g></g>` : ''
     const layerAttributes = ` id="copyos-node-${escapeXml(renderId)}" data-copyos-layer="${escapeXml(renderId)}" transform="${designNodeTransform(node)}" opacity="${node.opacity}"`
     const layerStyle = ` style="isolation:${layerBlend.isolation};mix-blend-mode:${layerBlend.mixBlendMode}"`
     // Editable-text exports put a single-element layer's attributes on that element; design tools import each <g> as a group.
-    if (editableText && !interaction && layerBlend.isolation === 'auto' && layerBlend.mixBlendMode === 'normal' &&
+    if (editableText && !interaction && !backdropLayer && layerBlend.isolation === 'auto' && layerBlend.mixBlendMode === 'normal' &&
       (/^<(?:path|ellipse)\b[^<>]*\/>$/.test(content) || /^<text\b/.test(content) && content.indexOf('<text', 1) === -1 &&
         content.endsWith('</text>')))
       return content.replace(/^<(path|ellipse|text)\b/, `<$1${layerAttributes}`)
-    return `<g${layerAttributes}${layerStyle}>${content}${interaction}</g>`
+    return `<g${layerAttributes}${layerStyle}>${backdropLayer}${content}${interaction}</g>`
   }
   return { render, definitions }
 }
@@ -2038,7 +2103,7 @@ export function designRectanglePath(
     | 'radiusTopRight'
     | 'radiusBottomRight'
     | 'radiusBottomLeft'
-  >,
+  > & { cornerSmoothing?: number | undefined },
 ): string {
   let tl = node.radiusTopLeft ?? node.radius,
     tr = node.radiusTopRight ?? node.radius,
@@ -2056,7 +2121,53 @@ export function designRectanglePath(
   tr *= scale
   br *= scale
   bl *= scale
+  const smoothing = Math.min(1, node.cornerSmoothing ?? 0)
+  if (smoothing > 0 && tl + tr + br + bl > 0) return designSmoothedRectanglePath(w, h, [tl, tr, br, bl], smoothing)
   return `M ${tl} 0 H ${w - tr} A ${tr} ${tr} 0 0 1 ${w} ${tr} V ${h - br} A ${br} ${br} 0 0 1 ${w - br} ${h} H ${bl} A ${bl} ${bl} 0 0 1 0 ${h - bl} V ${tl} A ${tl} ${tl} 0 0 1 ${tl} 0 Z`
+}
+
+/** One smoothed corner's curve lengths, after Figma's squircle construction (two cubic Béziers around a shorter circular arc). */
+function designSmoothedCorner(radius: number, smoothing: number, budget: number): {
+  a: number; b: number; c: number; d: number; p: number; arc: number; radius: number
+} {
+  if (radius <= 0) return { a: 0, b: 0, c: 0, d: 0, p: 0, arc: 0, radius: 0 }
+  // The smoothed corner reaches (1 + smoothing)·radius along each edge; a short edge reduces smoothing first (Figma's default).
+  const limited = Math.max(0, Math.min(smoothing, budget / radius - 1))
+  const p = Math.min((1 + limited) * radius, budget)
+  const toRadians = (degrees: number): number => degrees * Math.PI / 180
+  const arcMeasure = 90 * (1 - limited)
+  const arc = Math.sin(toRadians(arcMeasure / 2)) * radius * Math.SQRT2
+  const alpha = (90 - arcMeasure) / 2
+  const p3ToP4 = radius * Math.tan(toRadians(alpha / 2))
+  const beta = 45 * limited
+  const c = p3ToP4 * Math.cos(toRadians(beta)), d = c * Math.tan(toRadians(beta))
+  const b = Math.max(0, (p - arc - c - d) / 3)
+  return { a: 2 * b, b, c, d, p, arc, radius }
+}
+/** Figma corner smoothing: each corner becomes a circular arc eased into the edges by cubic Béziers.
+ * @param w - Width.
+ * @param h - Height.
+ * @param radii - Proportionally reduced top-left, top-right, bottom-right and bottom-left radii.
+ * @param smoothing - Corner smoothing from 0 (circular) to 1; 0.6 matches iOS.
+ * @returns Closed clockwise SVG path.
+ */
+function designSmoothedRectanglePath(w: number, h: number, radii: readonly [number, number, number, number], smoothing: number): string {
+  const [tl, tr, br, bl] = radii
+  // Each corner may use its proportional share of both adjacent edges, which is at least its own radius.
+  const share = (radius: number, alongX: number, alongY: number): number =>
+    Math.min(radius ? w * radius / (radius + alongX) : 0, radius ? h * radius / (radius + alongY) : 0)
+  const [a, b, c, d] = [designSmoothedCorner(tl, smoothing, share(tl, tr, bl)), designSmoothedCorner(tr, smoothing, share(tr, tl, br)),
+    designSmoothedCorner(br, smoothing, share(br, bl, tr)), designSmoothedCorner(bl, smoothing, share(bl, br, tl))]
+  const n = (value: number): string => String(Math.round(value * 10000) / 10000)
+  // Offsets are written along the incoming edge direction u and the outgoing direction v, as for the top-right corner.
+  const corner = (k: ReturnType<typeof designSmoothedCorner>, u: readonly [number, number], v: readonly [number, number]): string => {
+    if (!k.radius) return ''
+    const at = (along: number, across: number): string => `${n(along * u[0] + across * v[0])} ${n(along * u[1] + across * v[1])}`
+    return `c ${at(k.a, 0)} ${at(k.a + k.b, 0)} ${at(k.a + k.b + k.c, k.d)} a ${n(k.radius)} ${n(k.radius)} 0 0 1 ${at(k.arc, k.arc)} ` +
+      `c ${at(k.d, k.c)} ${at(k.d, k.b + k.c)} ${at(k.d, k.a + k.b + k.c)} `
+  }
+  return `M ${n(a.p)} 0 L ${n(w - b.p)} 0 ${corner(b, [1, 0], [0, 1])}L ${n(w)} ${n(h - c.p)} ${corner(c, [0, 1], [-1, 0])}` +
+    `L ${n(d.p)} ${n(h)} ${corner(d, [-1, 0], [0, -1])}L 0 ${n(a.p)} ${corner(a, [0, -1], [1, 0])}Z`
 }
 
 /** Read an ordered fill stack, including legacy single-paint documents.
@@ -2202,7 +2313,10 @@ export function designImageDefinition(
   height: number,
 ): string {
   const geometry = designImageGeometry(image, width, height)
-  return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${geometry.width}" height="${geometry.height}"${geometry.patternTransform ? ` patternTransform="${geometry.patternTransform}"` : ''}><image href="${escapeXml(image.url)}" width="${geometry.imageWidth}" height="${geometry.imageHeight}" preserveAspectRatio="${geometry.aspectRatio}"${geometry.imageTransform ? ` transform="${geometry.imageTransform}"` : ''}/></pattern>`
+  // Figma image adjustments: an sRGB filter on the picture; the host raster bakes them into the bytes and drops the field.
+  const filters = designImageFiltersActive(image.filters) ? image.filters : undefined, filtered = filters !== undefined
+  const filter = filters ? `<filter id="${id}-filters" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">${designImageFilterPrimitives(filters)}</filter>` : ''
+  return `${filter}<pattern id="${id}" patternUnits="userSpaceOnUse" width="${geometry.width}" height="${geometry.height}"${geometry.patternTransform ? ` patternTransform="${geometry.patternTransform}"` : ''}><image href="${escapeXml(image.url)}" width="${geometry.imageWidth}" height="${geometry.imageHeight}" preserveAspectRatio="${geometry.aspectRatio}"${geometry.imageTransform ? ` transform="${geometry.imageTransform}"` : ''}${filtered ? ` filter="url(#${id}-filters)"` : ''}/></pattern>`
 }
 /** An SVG texture preserves paint geometry and opacity in CSS text paints.
  * @param paint - Solid, gradient or image fill.

@@ -100,6 +100,9 @@ function collect(document: CopyOSDesignDocument, options: DesignMeasureTextOptio
   }
   return { jobs, skippedHidden }
 }
+/** The engine identity a layer's stored metrics must carry: per layer when the measurer names the faces each layer uses. */
+const engineOf = (measurer: Pick<DesignTextMeasurer, 'engine' | 'engineFor'>, node: CopyOSDesignNode): CopyOSDesignTextMeasurementEngine =>
+  measurer.engineFor?.(node) ?? measurer.engine
 function ready(job: Job, engine: CopyOSDesignTextMeasurementEngine): boolean {
   const cache = job.record ?? job.stored, overflow = cache.textLayoutMetrics?.overflow
   if ((overflow && overflow.signature !== designTextOverflowSignature(job.node)) ||
@@ -128,7 +131,10 @@ function stage(document: CopyOSDesignDocument, results: { job: Job; result: Meas
     const baselines = [...previous.textBaselineMetrics ?? []], index = baselines.findIndex(metric =>
       metric.signature === result.baseline.signature && sameEngine(metric.engine, result.baseline.engine))
     if (index < 0) {
-      if (baselines.length >= 32) throw new DesignMeasureTextError('budget', 'Text baseline cache budget exceeded', job.ownerId, job.path)
+      // Entries measured with another font catalog are stale; the oldest goes first so installing fonts never exhausts the cache.
+      const current = baselines.filter(metric => sameEngine(metric.engine, result.baseline.engine))
+      if (current.length >= 32) throw new DesignMeasureTextError('budget', 'Text baseline cache budget exceeded', job.ownerId, job.path)
+      while (baselines.length >= 32) baselines.splice(baselines.findIndex(metric => !sameEngine(metric.engine, result.baseline.engine)), 1)
       baselines.push(result.baseline)
     } else baselines[index] = result.baseline
     const fields = { textLayoutMetrics: result.layout, textBaselineMetrics: baselines }
@@ -151,7 +157,7 @@ function stage(document: CopyOSDesignDocument, results: { job: Job; result: Meas
  * @returns A fully validated candidate with measurement caches only; unavailable fonts, limits and nonconvergence reject atomically.
  */
 export async function measureDesignText(document: CopyOSDesignDocument, options: DesignMeasureTextOptions,
-  measurer: Pick<DesignTextMeasurer, 'measure' | 'engine'>): Promise<DesignMeasureTextResult> {
+  measurer: Pick<DesignTextMeasurer, 'measure' | 'engine' | 'engineFor'>): Promise<DesignMeasureTextResult> {
   for (const key of ['maxPasses', 'maxJobs', 'maxContexts'] as const)
     if (!Number.isInteger(options[key]) || options[key] < 1 || options[key] > (key === 'maxPasses' ? 64 : 100000))
       throw new DesignMeasureTextError('invalid-options', 'Text measurement budgets must be positive bounded integers')
@@ -164,7 +170,7 @@ export async function measureDesignText(document: CopyOSDesignDocument, options:
     const { jobs, skippedHidden } = collect(current, options), results: { job: Job; result: Measured }[] = []
     for (const job of jobs) {
       cancelled(options.signal)
-      if (ready(job, measurer.engine)) { if (pass === 1) reused.add(keyFor(job)); continue }
+      if (ready(job, engineOf(measurer, job.node))) { if (pass === 1) reused.add(keyFor(job)); continue }
       const input = JSON.stringify([designTextLayoutSignature(job.node), designTextBaselineSignature(job.node)])
       let result = measuredValues.get(input)
       if (!result) {
@@ -179,7 +185,7 @@ export async function measureDesignText(document: CopyOSDesignDocument, options:
           throw new DesignMeasureTextError('unavailable',
             `Text measurement unavailable: ${value.code}${value.family ? `; font ${JSON.stringify(value.family)}` : ''}`,
             job.ownerId, job.path, value.code)
-        validResult(job, value, measurer.engine)
+        validResult(job, value, engineOf(measurer, job.node))
         result = value
         measuredValues.set(input, result)
       }
@@ -202,7 +208,7 @@ export async function measureDesignText(document: CopyOSDesignDocument, options:
  * @param maxPasses - Reflow pass budget.
  * @returns The staged document and the text layers left unmeasured, with the reason.
  */
-export function measureDesignTextSync(document: CopyOSDesignDocument, measurer: Pick<DesignTextMeasurer, 'measure' | 'engine'>,
+export function measureDesignTextSync(document: CopyOSDesignDocument, measurer: Pick<DesignTextMeasurer, 'measure' | 'engine' | 'engineFor'>,
   maxPasses = 16): { document: CopyOSDesignDocument; unmeasured: { id: string; code: string; family?: string | undefined }[] } {
   const options: DesignMeasureTextOptions = { maxPasses, maxJobs: 20000, maxContexts: 20000 }
   let current = document
@@ -211,7 +217,7 @@ export function measureDesignTextSync(document: CopyOSDesignDocument, measurer: 
   for (let pass = 1; pass <= maxPasses; pass++) {
     const { jobs } = collect(current, options), results: { job: Job; result: Measured }[] = []
     for (const job of jobs) {
-      if (unmeasured.has(keyFor(job)) || ready(job, measurer.engine)) continue
+      if (unmeasured.has(keyFor(job)) || ready(job, engineOf(measurer, job.node))) continue
       const input = JSON.stringify([designTextLayoutSignature(job.node), designTextBaselineSignature(job.node)])
       let result = values.get(input)
       if (result === undefined) {
@@ -221,7 +227,7 @@ export function measureDesignTextSync(document: CopyOSDesignDocument, measurer: 
           unmeasured.set(keyFor(job), { id: job.ownerId, code: value.code, family: value.family })
           continue
         }
-        try { validResult(job, value, measurer.engine) } catch { values.set(input, null); continue }
+        try { validResult(job, value, engineOf(measurer, job.node)) } catch { values.set(input, null); continue }
         result = value
         values.set(input, result)
       }

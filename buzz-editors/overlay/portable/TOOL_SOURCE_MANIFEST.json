@@ -1,7 +1,7 @@
 {
   "source": "Independent CopyOS tool/skill snapshot; only tool-module imports retargeted",
   "files": {
-    "copyos-tools/src/design-inspection.ts": "d5ac3deb4d638d81df268e4902bc147663b2f1bb45e3c88e62b4d1787a3c6295",
+    "copyos-tools/src/design-inspection.ts": "3fe47b912fc539e1ff2f2e94978b7c4a055871b7129fde9e3aba5f4dbdca6317",
     "copyos-tools/src/design-system-summary.ts": "2c25768b48301f841241d26f3bfd25cba4d8cddbbc786c3729a585432fea6053",
     "guides/canvas-to-website.md": "3fb5cf696426b0087cf8ed1ab31e45d56f74dff1611cdb19b970f3c9688b042e",
     "page-workflows/copyos-web-clone/LICENSE": "c503556db0db95e79c947d3ff5077119be858aae23e08c2242124130f4a191bb",

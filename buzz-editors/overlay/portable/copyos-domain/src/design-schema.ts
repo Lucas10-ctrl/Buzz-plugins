@@ -43,7 +43,7 @@ const minimumSize = z.number().min(0).max(100_000)
 const textMeasurementEngineSchema = z.object({
   name: z.literal('skparagraph'), version: z.string().min(1).max(40), layoutVersion: z.number().int().min(1).max(1000000).optional(),
   fonts: z.array(z.object({ family: z.string().min(1).max(200), weight: z.number().int().min(1).max(1000),
-    style: z.enum(['normal', 'italic']), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(32),
+    style: z.enum(['normal', 'italic']), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(256),
 }).strict()
 const textBaselineMetricsSchema = z.array(z.object({
   signature: z.string().max(80), baseline: z.number().min(-1000000).max(1000000),
@@ -227,6 +227,12 @@ const variantAxisSchema = z.object({
 const variantValueSchema = z.object({
   axisId: z.uuid(), value: z.string().trim().min(1).max(120),
 }).strict()
+const imageFilterValue = z.number().min(-1).max(1).optional()
+/** Figma image adjustments, each from -1 to 1. */
+const imageFiltersSchema = z.object({
+  exposure: imageFilterValue, contrast: imageFilterValue, saturation: imageFilterValue, temperature: imageFilterValue,
+  tint: imageFilterValue, highlights: imageFilterValue, shadows: imageFilterValue,
+}).strict()
 const paintSchema = z
   .object({
     blendMode: designPaintBlendModeSchema.optional(),
@@ -244,6 +250,7 @@ const paintSchema = z
         ),
         scaleMode: z.enum(['fill', 'fit', 'stretch', 'crop', 'tile']),
         ...imageGeometrySchema.shape,
+        filters: imageFiltersSchema.optional(),
       })
       .strict()
       .refine(
@@ -397,6 +404,9 @@ const nodeSchema = z
     radiusTopRight: z.number().min(0).max(100000).optional(),
     radiusBottomRight: z.number().min(0).max(100000).optional(),
     radiusBottomLeft: z.number().min(0).max(100000).optional(),
+    cornerSmoothing: z.number().min(0).max(1).optional(),
+    mask: z.boolean().optional(),
+    maskType: z.enum(['alpha', 'vector', 'luminance']).optional(),
     targetAspectRatio: z.object({ x: z.number().positive().max(100000), y: z.number().positive().max(100000) }).strict()
       .refine(value => Number.isFinite(value.x / value.y) && value.x / value.y > 0, 'Invalid aspect ratio')
       .nullable().optional(),
@@ -489,7 +499,7 @@ const nodeSchema = z
     fontSize: z.number().min(1).max(1000),
     fontWeight: z.number().int().min(100).max(900),
     lineHeight: z.number().min(0.5).max(10),
-    textAlign: z.enum(['left', 'center', 'right']),
+    textAlign: z.enum(['left', 'center', 'right', 'justify']),
     imageUrl: imageUrlSchema,
     layout: z.enum(['none', 'row', 'column', 'grid']),
     gap: z.number().min(-10_000).max(10_000),
@@ -982,9 +992,10 @@ export function designDocumentValidationError(input: unknown): z.ZodError | unde
 export function parseDesignDocument(input: unknown): CopyOSDesignDocument {
   const result = designSchema.safeParse(input)
   if (!result.success)
-    throw new CopyOSDesignError(
+    // The issues (with their paths) ride along so callers can name the layer at fault.
+    throw Object.assign(new CopyOSDesignError(
       result.error.issues.map(i => i.message).join('; '),
-    )
+    ), { issues: result.error.issues })
   return captureDesignConstraintReferences(result.data)
 }
 

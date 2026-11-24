@@ -1,4 +1,4 @@
-import { designEffectOpacity } from './design-effect-values.ts'
+import { designEffectIsShadow, designEffectOpacity } from './design-effect-values.ts'
 /** Independent original-alpha shadow passes shared by Canvas and standalone SVG. */
 import { designNodeEffects, designNodeLayerBlur } from './design-effects.ts'
 import { designColorCssValue } from './design-color.ts'
@@ -9,7 +9,7 @@ export interface DesignEffectsBox { x: number; y: number; width: number; height:
 /** Safe filter primitives and their intermediate working region; this is distinct from final painted bounds. */
 export interface DesignEffectsFilter extends DesignEffectsBox { id: string; markup: string }
 const shadowEffects = (node: CopyOSDesignNode): CopyOSDesignShadow[] =>
-  designNodeEffects(node).filter(effect => effect.type !== 'layer-blur').map(effect => ({ ...effect, opacity: designEffectOpacity(effect) }))
+  designNodeEffects(node).filter(designEffectIsShadow).map(effect => ({ ...effect, opacity: designEffectOpacity(effect) }))
 const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
 /** Report whether the effective geometry supports authored shadow spread.

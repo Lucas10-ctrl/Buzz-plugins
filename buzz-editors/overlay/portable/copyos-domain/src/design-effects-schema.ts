@@ -19,13 +19,20 @@ export const designLayerBlurSchema = z.object({
   id: z.uuid(), type: z.literal('layer-blur'), visible: z.boolean(), radius: z.number().min(0).max(10000),
   numericBindings: z.object({ radius: z.uuid().optional() }).strict().optional(),
 }).strict()
-/** Discriminated supported native effects retain strict shadow and layer-blur shapes. */
-export const designEffectSchema = z.discriminatedUnion('type', [designDropShadowSchema, designInnerShadowSchema, designLayerBlurSchema])
-/** At most seventeen effects, including eight shadows of each type and one layer blur, with unique stack identities. */
-export const designEffectsSchema = z.array(designEffectSchema).max(17)
+/** Strict Figma background blur: the content behind the layer is blurred inside its shape (host raster only). */
+export const designBackgroundBlurSchema = z.object({
+  id: z.uuid(), type: z.literal('background-blur'), visible: z.boolean(), radius: z.number().min(0).max(10000),
+  numericBindings: z.object({ radius: z.uuid().optional() }).strict().optional(),
+}).strict()
+/** Discriminated supported native effects retain strict shadow, layer-blur and background-blur shapes. */
+export const designEffectSchema = z.discriminatedUnion('type', [designDropShadowSchema, designInnerShadowSchema, designLayerBlurSchema,
+  designBackgroundBlurSchema])
+/** At most eighteen effects, including eight shadows of each type, one layer blur and one background blur, with unique stack identities. */
+export const designEffectsSchema = z.array(designEffectSchema).max(18)
   .refine(effects => effects.filter(effect => effect.type === 'drop-shadow').length <= 8 &&
     effects.filter(effect => effect.type === 'inner-shadow').length <= 8, 'Effect stacks support at most eight shadows of each type')
   .refine(effects => effects.filter(effect => effect.type === 'layer-blur').length <= 1, 'Effect stacks support at most one layer blur')
+  .refine(effects => effects.filter(effect => effect.type === 'background-blur').length <= 1, 'Effect stacks support at most one background blur')
   .refine(effects => new Set(effects.map(effect => effect.id)).size === effects.length, 'Duplicate effect identity within a stack')
 
 /** Reusable complete authored effects with local metadata; effects retain stack-scoped identities. */

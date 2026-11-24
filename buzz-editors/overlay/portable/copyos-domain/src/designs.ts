@@ -1133,7 +1133,7 @@ export function applyDesignChangesWithSelection(
     const unbound = (effects: CopyOSDesignDocument['nodes'][number]['effects']) =>
       effects?.map((effect) => {
         const { numericBindings: _bindings, ...literal } = effect
-        if (literal.type === 'layer-blur') return literal
+        if (literal.type === 'layer-blur' || literal.type === 'background-blur') return literal
         const { colorVariableId: _colorVariableId, ...unboundShadow } = literal
         return unboundShadow
       })
