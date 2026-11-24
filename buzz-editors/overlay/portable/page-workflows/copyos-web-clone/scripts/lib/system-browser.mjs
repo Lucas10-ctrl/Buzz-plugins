@@ -7,45 +7,22 @@ const COMMAND_TIMEOUT_MS = 30_000;
 const PROFILE_MARKER = "od-web-clone-browser-";
 const IS_POSIX = process.platform !== "win32";
 
-function readProcessTablePosix() {
-  const entries = [];
-  let pids;
+// /proc/<pid>/stat, parsed for the two fields the sweep needs: the process
+// group (field 5) and the start time (field 22) that distinguishes a live
+// process from a later one that reused the same pid. Null when the pid is gone.
+// Nothing here reads /proc/<pid>/cmdline: Chrome rewrites its process title,
+// so its cmdline is one space-joined string, not one entry per argument —
+// command-line matching is deliberately not used anywhere in this file.
+function procStat(pid) {
   try {
-    pids = fs.readdirSync("/proc");
+    const stat = fs.readFileSync(path.join("/proc", String(pid), "stat"), "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
+    // fields[0] is stat field 3 (state) once pid and comm are stripped, so
+    // pgrp is fields[2] and starttime is fields[19].
+    return { pgrp: Number(fields[2]), startTime: Number(fields[19]) || 0 };
   } catch {
-    return entries;
+    return null;
   }
-  for (const pidText of pids) {
-    if (!/^\d+$/.test(pidText)) continue;
-    const pid = Number(pidText);
-    let stat;
-    try {
-      stat = fs.readFileSync(path.join("/proc", pidText, "stat"), "utf8");
-    } catch {
-      continue;
-    }
-    const nameEnd = stat.lastIndexOf(")");
-    if (nameEnd < 0) continue;
-    const fields = stat.slice(nameEnd + 1).trim().split(/\s+/);
-    const state = fields[0] || "";
-    const ppid = Number(fields[1]);
-    // stat field 22 (starttime) is fields[19] once pid and comm are stripped.
-    const startTime = Number(fields[19]);
-    let cmdline = [];
-    try {
-      cmdline = fs.readFileSync(path.join("/proc", pidText, "cmdline"), "utf8").split("\0").filter(Boolean);
-    } catch {
-      // Zombies and exiting processes can lose cmdline before they disappear.
-    }
-    entries.push({
-      pid,
-      ppid: Number.isFinite(ppid) ? ppid : 0,
-      startTime: Number.isFinite(startTime) ? startTime : 0,
-      state,
-      cmdline,
-    });
-  }
-  return entries;
 }
 
 // Kill a whole process group (`detached: true` makes the Chrome parent its
@@ -78,46 +55,13 @@ function removeProfile(profileDir) {
 // /proc/<pid>/stat field 22 (starttime), the value that distinguishes a live
 // process from a later one that reused the same pid. Null when the pid is gone.
 function processStartTime(pid) {
-  try {
-    const stat = fs.readFileSync(path.join("/proc", String(pid), "stat"), "utf8");
-    const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
-    // fields[0] is stat field 3 (state) once pid and comm are stripped.
-    return Number(fields[19]) || null;
-  } catch {
-    return null;
-  }
+  return procStat(pid)?.startTime ?? null;
 }
 
-const USER_DATA_DIR_PREFIX = "--user-data-dir=";
-
-// Only Chrome's MAIN browser process matches: no `--type=` argument (helpers
-// carry `--type=renderer`, `--type=zygote`, ...) and an argument that STARTS
-// with `--user-data-dir=<tmpdir>/od-web-clone-browser-`. A command line that
-// merely mentions the marker — a shell, grep, rm, a log path — never matches.
-// Returns the profile dir on a match, null otherwise.
-function cloneChromeProfileDir(entry) {
-  let profileDir = null;
-  for (const arg of entry.cmdline) {
-    if (arg.startsWith("--type=")) return null;
-    if (arg.startsWith(`${USER_DATA_DIR_PREFIX}${os.tmpdir()}/${PROFILE_MARKER}`)) {
-      profileDir = arg.slice(USER_DATA_DIR_PREFIX.length);
-    }
-  }
-  return profileDir;
-}
-
-// The launcher records its pid and start time in the profile before Chrome
-// starts. The Chrome is only swept when that exact launcher is gone: its pid
-// vanished, or the pid now belongs to a different process (start time differs).
-function launcherIsGone(profileDir) {
-  let record;
-  try {
-    record = JSON.parse(fs.readFileSync(path.join(profileDir, "launcher.json"), "utf8"));
-  } catch {
-    // Without the launcher record there is no proof the launcher died —
-    // leave the process alone.
-    return false;
-  }
+// The launcher records its own pid + start time, and Chrome's pid + start
+// time, in the profile. A profile's launcher is gone when its pid vanished,
+// or the pid now belongs to a different process (start time differs).
+function launcherIsGone(record) {
   const pid = Number(record?.pid);
   if (!Number.isInteger(pid) || pid <= 0) return false;
   const startTime = processStartTime(pid);
@@ -126,27 +70,49 @@ function launcherIsGone(profileDir) {
 }
 
 // Fix for the hours-long leak: Chrome process groups whose launching script
-// died without closing them. Only real clone Chromes (main browser process
-// bound to one of our temp profiles) whose recorded launcher is gone are
-// touched; each is killed as a whole process group — never a single helper —
-// and its profile folder is removed. Returns the pids it killed.
+// died without closing them. The sweep walks the <tmpdir>/od-web-clone-browser-*
+// profile folders and reads each one's launcher.json — nothing is taken from
+// any command line, so Chrome's process-title rewriting is irrelevant and no
+// unrelated process can ever be matched. When the recorded launcher is gone:
+// the recorded Chrome is killed as a whole process group (only while its pid
+// still matches its recorded start time AND it leads its own group), and the
+// profile folder is always removed — a folder whose Chrome already died is a
+// stale leftover. Returns the pids it killed.
 export function sweepOrphanedBrowsers() {
   if (!IS_POSIX) return [];
   const killed = [];
-  for (const entry of readProcessTablePosix()) {
-    if (entry.state === "Z") continue;
-    const profileDir = cloneChromeProfileDir(entry);
-    if (!profileDir) continue;
-    if (!launcherIsGone(profileDir)) continue;
+  const tmpDir = os.tmpdir();
+  let names;
+  try {
+    names = fs.readdirSync(tmpDir);
+  } catch {
+    return killed;
+  }
+  for (const name of names) {
+    if (!name.startsWith(PROFILE_MARKER)) continue;
+    const profileDir = path.join(tmpDir, name);
+    let record;
     try {
-      // Chrome was launched detached, so its pid is its process-group id and
-      // -pid signals the browser plus every renderer/zygote it spawned.
-      process.kill(-entry.pid, "SIGKILL");
+      record = JSON.parse(fs.readFileSync(path.join(profileDir, "launcher.json"), "utf8"));
     } catch {
-      // Not a group leader, so not one of ours — never kill a single process.
+      // No launcher record: no proof the launcher died — leave it alone.
       continue;
     }
-    killed.push(entry.pid);
+    if (!launcherIsGone(record)) continue;
+    const chromePid = Number(record?.chromePid);
+    if (Number.isInteger(chromePid) && chromePid > 0) {
+      const stat = procStat(chromePid);
+      if (stat && stat.startTime === Number(record.chromeStartTime) && stat.pgrp === chromePid) {
+        try {
+          // Chrome was launched detached, so its pid is its process-group id
+          // and -pid signals the browser plus every renderer/zygote it spawned.
+          process.kill(-chromePid, "SIGKILL");
+          killed.push(chromePid);
+        } catch {
+          // Lost the race — the group already died on its own.
+        }
+      }
+    }
     removeProfile(profileDir);
   }
   return killed;
@@ -625,6 +591,8 @@ function forceKillSync(browser) {
   removeProfile(browser.profileDir);
 }
 
+const CLEANUP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+
 function installProcessCleanupHandlers() {
   if (exitHandlersInstalled || !IS_POSIX) return;
   exitHandlersInstalled = true;
@@ -637,18 +605,21 @@ function installProcessCleanupHandlers() {
   const signalHandler = (signal) => {
     hardCleanup();
     // Remove only OUR OWN handlers — removeAllListeners would strip the
-    // calling script's SIGINT/SIGTERM/exit handlers too.
-    process.off("SIGINT", signalHandler);
-    process.off("SIGTERM", signalHandler);
+    // calling script's signal/exit handlers too. Reset the flag so a caller
+    // that catches the signal and keeps running gets handlers re-installed
+    // by its next launch.
+    for (const handled of CLEANUP_SIGNALS) process.off(handled, signalHandler);
     process.off("exit", hardCleanup);
+    exitHandlersInstalled = false;
     // Restore the default behaviour and re-raise so the exit status matches,
-    // but only when no other listener still handles this signal.
-    if (process.listenerCount("SIGINT") === 0 && process.listenerCount("SIGTERM") === 0) {
+    // but only when nothing else handles THIS signal — a caller that only
+    // registered a SIGTERM handler must still die on SIGINT/SIGHUP.
+    if (process.listenerCount(signal) === 0) {
       process.kill(process.pid, signal);
     }
   };
-  process.on("SIGINT", signalHandler);
-  process.on("SIGTERM", signalHandler);
+  // SIGHUP too: closing a terminal or dropping ssh must clean up like Ctrl-C.
+  for (const handled of CLEANUP_SIGNALS) process.on(handled, signalHandler);
   // 'exit' also fires when an uncaught async error ends the script midway,
   // so a thrown-midway run still kills its Chrome group here.
   process.on("exit", hardCleanup);
@@ -784,6 +755,23 @@ async function launchSystemBrowser({ executablePath } = {}) {
     // and survive a silent parent death with nobody watching its output.
     stdio: IS_POSIX ? "ignore" : ["ignore", "pipe", "pipe"],
   });
+  // The detached child must not keep this process alive: a script that never
+  // calls close() still exits, and the 'exit' handler then kills the Chrome
+  // group and removes the profile.
+  child.unref();
+  // Complete the launcher record with Chrome's own pid + /proc start time so
+  // a later sweep knows exactly which process group to kill for this profile.
+  if (IS_POSIX) {
+    fs.writeFileSync(
+      path.join(profileDir, "launcher.json"),
+      JSON.stringify({
+        pid: process.pid,
+        startTime: processStartTime(process.pid),
+        chromePid: child.pid,
+        chromeStartTime: processStartTime(child.pid),
+      }),
+    );
+  }
 
   const browser = new SystemBrowser(child, profileDir, "ws://127.0.0.1:0/devtools/browser/pending");
   registerBrowser(browser);

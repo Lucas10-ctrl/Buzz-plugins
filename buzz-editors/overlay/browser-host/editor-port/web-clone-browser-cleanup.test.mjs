@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,26 +15,6 @@ const LIB_PATH = new URL(
   import.meta.url,
 ).pathname;
 
-function markerProcesses() {
-  try {
-    const out = execFileSync("pgrep", ["-f", MARKER], { encoding: "utf8" });
-    return out.split("\n").map(Number).filter(Boolean);
-  } catch (error) {
-    // pgrep exits 1 when nothing matches.
-    if (error.status === 1) return [];
-    throw error;
-  }
-}
-
-async function waitForMarkerProcessesGone(timeoutMs = 10_000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (markerProcesses().length === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  expect(markerProcesses(), "no od-web-clone-browser processes should remain").toEqual([]);
-}
-
 function processAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -44,6 +24,40 @@ function processAlive(pid) {
   }
 }
 
+// /proc/<pid>/stat field 22 (starttime), same value the sweep compares against.
+function procStartTime(pid) {
+  try {
+    const stat = fs.readFileSync(path.join("/proc", String(pid), "stat"), "utf8");
+    return Number(stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/)[19]) || null;
+  } catch {
+    return null;
+  }
+}
+
+// Live (non-zombie) processes whose process group (stat field 5) is pgid.
+// Leftover checks are scoped to each test's own process groups and profile
+// folders — never a machine-wide pgrep another clone could trip over.
+function groupMembers(pgid) {
+  const members = [];
+  let names;
+  try {
+    names = fs.readdirSync("/proc");
+  } catch {
+    return members;
+  }
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = fs.readFileSync(path.join("/proc", name, "stat"), "utf8");
+      const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
+      if (fields[0] !== "Z" && Number(fields[2]) === pgid) members.push(Number(name));
+    } catch {
+      // The process vanished mid-scan.
+    }
+  }
+  return members;
+}
+
 async function waitFor(predicate, timeoutMs = 10_000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -51,6 +65,17 @@ async function waitFor(predicate, timeoutMs = 10_000) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return false;
+}
+
+// Scoped leftover check for one launch: its Chrome group is empty and its
+// temp profile folder is gone.
+async function expectChromeGone(chromePid, profileDir) {
+  const gone = await waitFor(() => groupMembers(chromePid).length === 0);
+  expect(gone, `chrome group ${chromePid} should be gone`).toBe(true);
+  if (profileDir) {
+    const removed = await waitFor(() => !fs.existsSync(profileDir));
+    expect(removed, `profile ${profileDir} should be removed`).toBe(true);
+  }
 }
 
 // Runs a child node script and resolves once it prints "READY <chromePid> <profileDir>".
@@ -77,26 +102,23 @@ function runHelperScript(body) {
   return { child, ready };
 }
 
-// /proc/self/stat field 22 (starttime), same value the sweep compares against.
-function selfStartTime() {
-  const stat = fs.readFileSync("/proc/self/stat", "utf8");
-  return Number(stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/)[19]);
+function writeLauncherRecord(profileDir, record) {
+  fs.writeFileSync(path.join(profileDir, "launcher.json"), JSON.stringify(record));
 }
 
 // Tracks fake Chromes so a failed assertion can never leak one past the suite.
 const fakeChromes = [];
 
-// A stand-in for Chrome's MAIN browser process: no --type= argument and a
-// --user-data-dir=<tmpdir>/od-web-clone-browser-* argument, launched detached
-// so it leads its own process group exactly like the real launcher does.
-function spawnFakeCloneChrome(profileDir) {
+// A stand-in for Chrome's MAIN browser process, launched detached so it leads
+// its own process group exactly like the real launcher does. The sweep only
+// knows about it through launcher.json (chromePid + chromeStartTime), never
+// through its command line.
+function spawnFakeCloneChrome() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "webclone-cleanup-test-"));
   const script = path.join(dir, "fake-chrome.mjs");
   fs.writeFileSync(script, "setTimeout(() => {}, 120000);\n");
-  const child = spawn(process.execPath, [script, `--user-data-dir=${profileDir}`], {
-    stdio: "ignore",
-    detached: true,
-  });
+  const child = spawn(process.execPath, [script], { stdio: "ignore", detached: true });
+  child.unref();
   fakeChromes.push(child);
   return child;
 }
@@ -114,7 +136,7 @@ afterAll(async () => {
       } catch {}
     }
   }
-  // Never leave a marker process behind, even if a test failed midway.
+  // Never leave an orphan behind, even if a test failed midway.
   sweepOrphanedBrowsers();
 });
 
@@ -123,11 +145,10 @@ describeWithChrome("web-clone browser cleanup", () => {
     const browser = await systemChromium.launch({ executablePath: executable });
     const profileDir = browser.profileDir;
     expect(fs.existsSync(profileDir)).toBe(true);
+    const chromePid = browser.child.pid;
     await browser.close();
-    await waitForMarkerProcessesGone();
-    await waitFor(() => !fs.existsSync(profileDir));
-    expect(fs.existsSync(profileDir)).toBe(false);
-  });
+    await expectChromeGone(chromePid, profileDir);
+  }, 60_000);
 
   // Chrome startup under a full-suite load can exceed the default timeout;
   // give this case room instead of racing it (was flaky at ~32 s).
@@ -141,24 +162,65 @@ throw new Error("boom midway");
     expect(processAlive(pid)).toBe(true);
     const code = await new Promise((resolve) => child.once("exit", resolve));
     expect(code).not.toBe(0);
-    await waitForMarkerProcessesGone();
-    await waitFor(() => !fs.existsSync(profileDir));
-    expect(fs.existsSync(profileDir)).toBe(false);
+    await expectChromeGone(pid, profileDir);
   }, 60_000);
 
   it("SIGINT kills the Chrome group before the script dies", async () => {
     const { child, ready } = runHelperScript(`
 const browser = await systemChromium.launch({ executablePath: process.argv[2] });
 console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
-await new Promise(() => {});
+setInterval(() => {}, 1_000); // keep the script alive on its own handle
 `);
     const { pid, profileDir } = await ready;
     child.kill("SIGINT");
     await new Promise((resolve) => child.once("exit", resolve));
-    await waitForMarkerProcessesGone();
-    await waitFor(() => !fs.existsSync(profileDir));
-    expect(fs.existsSync(profileDir)).toBe(false);
-  });
+    await expectChromeGone(pid, profileDir);
+  }, 60_000);
+
+  it("SIGHUP (terminal closed, ssh dropped) kills the Chrome group", async () => {
+    const { child, ready } = runHelperScript(`
+const browser = await systemChromium.launch({ executablePath: process.argv[2] });
+console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
+setInterval(() => {}, 1_000); // keep the script alive on its own handle
+`);
+    const { pid, profileDir } = await ready;
+    child.kill("SIGHUP");
+    await new Promise((resolve) => child.once("exit", resolve));
+    await expectChromeGone(pid, profileDir);
+  }, 60_000);
+
+  it("a caller with only a SIGTERM handler still dies on SIGINT", async () => {
+    // The caller's SIGTERM handler must not swallow SIGINT: our handler
+    // re-raises the signal that was actually received when nothing else
+    // handles it, so Ctrl-C still stops the script and kills Chrome.
+    const { child, ready } = runHelperScript(`
+process.on("SIGTERM", () => { process.exit(7); });
+const browser = await systemChromium.launch({ executablePath: process.argv[2] });
+console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
+setInterval(() => {}, 1_000); // keep the script alive on its own handle
+`);
+    const { pid, profileDir } = await ready;
+    child.kill("SIGINT");
+    const [code, signal] = await new Promise((resolve) =>
+      child.once("exit", (c, s) => resolve([c, s])),
+    );
+    expect(code === null && signal === "SIGINT", `helper should die by SIGINT (code ${code} signal ${signal})`).toBe(true);
+    await expectChromeGone(pid, profileDir);
+  }, 60_000);
+
+  it("a script that never calls close() still exits and leaves nothing behind", async () => {
+    // child.unref() means the spawned Chrome cannot hold the script open:
+    // falling off the end exits 0, and the 'exit' handler kills the group
+    // and removes the profile.
+    const { child, ready } = runHelperScript(`
+const browser = await systemChromium.launch({ executablePath: process.argv[2] });
+console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
+`);
+    const { pid, profileDir } = await ready;
+    const code = await new Promise((resolve) => child.once("exit", resolve));
+    expect(code, "script must exit on its own without close()").toBe(0);
+    await expectChromeGone(pid, profileDir);
+  }, 60_000);
 
   it("a live clone with a real Chrome survives a second launch's sweep", async () => {
     const first = await systemChromium.launch({ executablePath: executable });
@@ -169,7 +231,26 @@ await new Promise(() => {});
     expect(fs.existsSync(first.profileDir)).toBe(true);
     await first.close();
     await second.close();
-    await waitForMarkerProcessesGone();
+    await expectChromeGone(first.child.pid, first.profileDir);
+    await expectChromeGone(second.child.pid, second.profileDir);
+  }, 60_000);
+
+  it("an orphaned real Chrome is swept after its launcher is SIGKILLed", async () => {
+    // The reviewer's finding A: a launcher killed by OOM / kill -9 / a closed
+    // terminal must not leave Chrome behind forever. The next sweep kills the
+    // recorded Chrome group and removes the profile.
+    const { child, ready } = runHelperScript(`
+const browser = await systemChromium.launch({ executablePath: process.argv[2] });
+console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
+setInterval(() => {}, 1_000); // keep the script alive on its own handle
+`);
+    const { pid, profileDir } = await ready;
+    expect(groupMembers(pid).length, "the real Chrome group is running before the kill").toBeGreaterThan(1);
+    child.kill("SIGKILL");
+    await new Promise((resolve) => child.once("exit", resolve));
+    const killed = sweepOrphanedBrowsers();
+    expect(killed, "the sweep must kill the orphaned Chrome").toContain(pid);
+    await expectChromeGone(pid, profileDir);
   }, 60_000);
 });
 
@@ -181,19 +262,23 @@ describe("sweepOrphanedBrowsers", () => {
     await new Promise((resolve) => dead.once("exit", resolve));
 
     const orphanProfile = fs.mkdtempSync(path.join(os.tmpdir(), `${MARKER}-`));
-    fs.writeFileSync(
-      path.join(orphanProfile, "launcher.json"),
-      JSON.stringify({ pid: deadPid, startTime: 1 }),
-    );
-    const orphan = spawnFakeCloneChrome(orphanProfile);
+    const orphan = spawnFakeCloneChrome();
+    writeLauncherRecord(orphanProfile, {
+      pid: deadPid,
+      startTime: 1,
+      chromePid: orphan.pid,
+      chromeStartTime: procStartTime(orphan.pid),
+    });
 
     // Live clone: launcher.json points at this still-running test process.
     const liveProfile = fs.mkdtempSync(path.join(os.tmpdir(), `${MARKER}-`));
-    fs.writeFileSync(
-      path.join(liveProfile, "launcher.json"),
-      JSON.stringify({ pid: process.pid, startTime: selfStartTime() }),
-    );
-    const live = spawnFakeCloneChrome(liveProfile);
+    const live = spawnFakeCloneChrome();
+    writeLauncherRecord(liveProfile, {
+      pid: process.pid,
+      startTime: procStartTime(process.pid),
+      chromePid: live.pid,
+      chromeStartTime: procStartTime(live.pid),
+    });
     expect(await waitFor(() => processAlive(orphan.pid) && processAlive(live.pid))).toBe(true);
 
     const killed = sweepOrphanedBrowsers();
@@ -207,15 +292,56 @@ describe("sweepOrphanedBrowsers", () => {
     fs.rmSync(liveProfile, { recursive: true, force: true });
   });
 
+  it("removes a stale profile folder whose Chrome is already gone", async () => {
+    const dead = spawn(process.execPath, ["--version"], { stdio: "ignore" });
+    const deadPid = dead.pid;
+    await new Promise((resolve) => dead.once("exit", resolve));
+    const staleProfile = fs.mkdtempSync(path.join(os.tmpdir(), `${MARKER}-`));
+    writeLauncherRecord(staleProfile, {
+      pid: deadPid,
+      startTime: 1,
+      chromePid: deadPid,
+      chromeStartTime: 1,
+    });
+    const killed = sweepOrphanedBrowsers();
+    expect(killed).not.toContain(deadPid);
+    expect(fs.existsSync(staleProfile), "a stale profile is removed").toBe(false);
+  });
+
   it("spares a non-Chrome process that mentions the marker", async () => {
-    // The reviewer's blocker: a command line that merely contains the marker
-    // (shells, grep, watchers) must survive the sweep untouched. tail -F keeps
-    // running with the marker in its argv even though the file never appears.
+    // A command line that merely contains the marker (shells, grep, watchers)
+    // must survive the sweep untouched — the sweep never reads command lines.
     const decoy = spawn("tail", ["-F", `/tmp/${MARKER}-decoy`], { stdio: "ignore" });
     const killed = sweepOrphanedBrowsers();
     expect(killed).not.toContain(decoy.pid);
     expect(processAlive(decoy.pid), "a non-Chrome marker process must survive").toBe(true);
     decoy.kill("SIGKILL");
     await waitFor(() => !processAlive(decoy.pid));
+  });
+
+  it("spares a non-Chrome group leader even when a marker folder holds a dead launcher record", async () => {
+    // The reviewer's adversarial case: a /bin/sh leading its own group, with
+    // the marker profile path in its argv and a launcher.json pointing at a
+    // dead pid. The sweep only kills pids recorded as chromePid in a
+    // launcher.json, and this sh was never launched by us — it must survive.
+    const dead = spawn(process.execPath, ["--version"], { stdio: "ignore" });
+    const deadPid = dead.pid;
+    await new Promise((resolve) => dead.once("exit", resolve));
+    const advProfile = fs.mkdtempSync(path.join(os.tmpdir(), `${MARKER}-adv-`));
+    writeLauncherRecord(advProfile, { pid: deadPid, startTime: 1 });
+    const sh = spawn("/bin/sh", ["-c", "sleep 60", `--user-data-dir=${advProfile}`], {
+      stdio: "ignore",
+      detached: true,
+    });
+    sh.unref();
+    expect(await waitFor(() => processAlive(sh.pid))).toBe(true);
+    const killed = sweepOrphanedBrowsers();
+    expect(killed, "the sweep kills only recorded Chrome pids").not.toContain(sh.pid);
+    expect(processAlive(sh.pid), "the non-Chrome group leader must survive").toBe(true);
+    expect(fs.existsSync(advProfile), "the dead-launcher folder is still removed as stale").toBe(false);
+    try {
+      process.kill(-sh.pid, "SIGKILL");
+    } catch {}
+    await waitFor(() => !processAlive(sh.pid));
   });
 });
