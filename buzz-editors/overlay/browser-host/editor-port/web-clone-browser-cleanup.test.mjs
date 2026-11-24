@@ -137,6 +137,10 @@ afterAll(async () => {
     }
   }
   // Never leave an orphan behind, even if a test failed midway.
+  // Note: this sweeps the REAL os.tmpdir(), so it also SIGKILLs any genuinely
+  // orphaned clone Chrome left on the machine by earlier dead runs. That is
+  // the sweep's intended behaviour, not a test side effect to be surprised
+  // by — a live clone's own folder is never touched (launcher still alive).
   sweepOrphanedBrowsers();
 });
 
@@ -208,10 +212,13 @@ setInterval(() => {}, 1_000); // keep the script alive on its own handle
     await expectChromeGone(pid, profileDir);
   }, 60_000);
 
-  it("a script that never calls close() still exits and leaves nothing behind", async () => {
-    // child.unref() means the spawned Chrome cannot hold the script open:
-    // falling off the end exits 0, and the 'exit' handler kills the group
-    // and removes the profile.
+  it("a script that launches but never opens a page or calls close() exits and leaves nothing behind", async () => {
+    // What child.unref() guarantees: with NO page open, the spawned Chrome
+    // cannot hold the script open — falling off the end exits 0, and the
+    // 'exit' handler kills the group and removes the profile. Once a page IS
+    // open its CDP WebSocket keeps the event loop alive, so such a script
+    // hangs until it is signalled — see the SIGHUP test below. Every current
+    // caller launches inside try/finally, so close() always runs.
     const { child, ready } = runHelperScript(`
 const browser = await systemChromium.launch({ executablePath: process.argv[2] });
 console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
@@ -219,6 +226,26 @@ console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
     const { pid, profileDir } = await ready;
     const code = await new Promise((resolve) => child.once("exit", resolve));
     expect(code, "script must exit on its own without close()").toBe(0);
+    await expectChromeGone(pid, profileDir);
+  }, 60_000);
+
+  it("SIGHUP cleans up a script that opened a page and never called close()", async () => {
+    // The "forgot close()" case with a real page: the page's CDP WebSocket
+    // keeps the script running (it hangs), so cleanup cannot rely on exit —
+    // but a terminal close / dropped ssh must still take Chrome with it.
+    const { child, ready } = runHelperScript(`
+const browser = await systemChromium.launch({ executablePath: process.argv[2] });
+const context = await browser.newContext();
+const page = await context.newPage();
+await page.goto("about:blank");
+console.log(\`READY \${browser.child.pid} \${browser.profileDir}\`);
+setInterval(() => {}, 1_000); // the script keeps running; it never calls close()
+`);
+    const { pid, profileDir } = await ready;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(child.exitCode, "a script holding an open page without close() stays running").toBe(null);
+    child.kill("SIGHUP");
+    await new Promise((resolve) => child.once("exit", resolve));
     await expectChromeGone(pid, profileDir);
   }, 60_000);
 
@@ -306,6 +333,21 @@ describe("sweepOrphanedBrowsers", () => {
     const killed = sweepOrphanedBrowsers();
     expect(killed).not.toContain(deadPid);
     expect(fs.existsSync(staleProfile), "a stale profile is removed").toBe(false);
+  });
+
+  it("leaves a live launcher's folder alone when its record has no usable start time", () => {
+    // Finding A: a null (or missing/non-numeric) startTime proves nothing.
+    // Treating it as "launcher gone" would delete a live clone's profile on
+    // any host where processStartTime() can't answer — on macOS, without
+    // /proc, every pid would look dead. The sweep must leave the folder be.
+    const liveProfile = fs.mkdtempSync(path.join(os.tmpdir(), `${MARKER}-`));
+    writeLauncherRecord(liveProfile, { pid: process.pid, startTime: null });
+    sweepOrphanedBrowsers();
+    expect(
+      fs.existsSync(liveProfile),
+      "a live launcher's folder with startTime null must survive the sweep",
+    ).toBe(true);
+    fs.rmSync(liveProfile, { recursive: true, force: true });
   });
 
   it("spares a non-Chrome process that mentions the marker", async () => {

@@ -60,13 +60,19 @@ function processStartTime(pid) {
 
 // The launcher records its own pid + start time, and Chrome's pid + start
 // time, in the profile. A profile's launcher is gone when its pid vanished,
-// or the pid now belongs to a different process (start time differs).
+// or the pid now belongs to a different process (start time differs) — but
+// only when the record carries a usable start time to compare against.
 function launcherIsGone(record) {
   const pid = Number(record?.pid);
   if (!Number.isInteger(pid) || pid <= 0) return false;
+  // A record without a positive-integer startTime proves nothing: the
+  // comparison below would read a live process as gone (Number(null) is 0,
+  // and a live start time is never 0). Not provable gone means not gone —
+  // the folder is left alone.
+  if (!Number.isInteger(record?.startTime) || record.startTime <= 0) return false;
   const startTime = processStartTime(pid);
   if (startTime === null) return true;
-  return startTime !== Number(record?.startTime);
+  return startTime !== record.startTime;
 }
 
 // Fix for the hours-long leak: Chrome process groups whose launching script
@@ -78,8 +84,11 @@ function launcherIsGone(record) {
 // still matches its recorded start time AND it leads its own group), and the
 // profile folder is always removed — a folder whose Chrome already died is a
 // stale leftover. Returns the pids it killed.
+// Requires a readable /proc: without it (macOS) no launcher can be proven
+// gone, so the sweep is a complete no-op there and orphans are never swept.
 export function sweepOrphanedBrowsers() {
   if (!IS_POSIX) return [];
+  if (!fs.existsSync("/proc/self/stat")) return [];
   const killed = [];
   const tmpDir = os.tmpdir();
   let names;
@@ -99,6 +108,10 @@ export function sweepOrphanedBrowsers() {
       continue;
     }
     if (!launcherIsGone(record)) continue;
+    // Launcher provably gone. Kill the recorded Chrome only when it can be
+    // verified — a missing or non-numeric chromeStartTime can never match
+    // the live start time, so an unverifiable Chrome is never killed. The
+    // folder itself goes: with the launcher really gone it is a leftover.
     const chromePid = Number(record?.chromePid);
     if (Number.isInteger(chromePid) && chromePid > 0) {
       const stat = procStat(chromePid);
