@@ -28,11 +28,14 @@ import {
   installDesignDocumentFonts,
   loadAllDesignProjectFonts,
   measureDesignDocumentText,
+  readDesignImageSource,
   renderDesignArtboard,
   storeDesignImageSource,
 } from "../../copyos-domain/src/design-agent-host.ts";
-import { CANVAS_AGENT_GUIDE } from "./canvas-agent.ts";
+import { CANVAS_GUIDE_TOPIC_NAMES, canvasGuideTopic } from "./canvas-agent.ts";
 import { runCanvasScript } from "../../copyos-tools/src/canvas-script.ts";
+import { describeDesignMetadata } from "../../copyos-domain/src/design-metadata.ts";
+import { listDesignIcons } from "../../copyos-domain/src/design-icons.ts";
 import type { CopyOSDesignDocument } from "../../copyos-domain/src/types.ts";
 import {
   GenerationStore,
@@ -508,7 +511,10 @@ export class CanvasStore {
           document,
           value.code,
           {
-            fonts: () => loadAllDesignProjectFonts(root),
+            fonts: async (families, needs) => {
+              if (needs?.symbols) await installDesignSymbolFont(root);
+              return loadAllDesignProjectFonts(root, families, { emoji: needs?.emoji ?? false });
+            },
             installFont: async (family) => {
               const result = await this.fonts.installGoogle(root, [family], {
                 cssUrl: "https://fonts.googleapis.com/css2",
@@ -544,9 +550,28 @@ export class CanvasStore {
             : {}),
         };
       }
-      case "readCanvasGuide":
-        request.strict().parse(input);
-        return { guide: CANVAS_AGENT_GUIDE };
+      case "readCanvasGuide": {
+        const value = request.extend({ topic: z.string().max(80).optional() }).strict().parse(input);
+        const guide = canvasGuideTopic(value.topic ?? "canvas-use");
+        if (guide === undefined) throw new Error(`No guide topic "${value.topic ?? ""}". Topics: ${CANVAS_GUIDE_TOPIC_NAMES.join(", ")}`);
+        return { guide, topics: CANVAS_GUIDE_TOPIC_NAMES };
+      }
+      case "getDesignMetadata": {
+        const value = design
+          .extend({ nodeId: id.optional(), depth: z.number().int().min(1).max(64).optional() })
+          .strict()
+          .parse(input);
+        return {
+          metadata: describeDesignMetadata(await readDesign(value.designId), {
+            ...(value.nodeId ? { nodeId: value.nodeId } : {}),
+            ...(value.depth ? { depth: value.depth } : {}),
+          }),
+        };
+      }
+      case "listDesignIcons": {
+        const value = request.extend({ query: z.string().max(80).optional() }).strict().parse(input);
+        return { icons: listDesignIcons(value.query ?? ""), use: "In runCanvasScript: figma.createNodeFromSvg(canvas.icon('search', { color: '#202124', size: 24 }))" };
+      }
       case "getDesignSystem":
         return describeDesignSystem(
           await readDesign(design.strict().parse(input).designId),
@@ -732,14 +757,20 @@ export class CanvasStore {
         });
       }
       case "uploadDesignFont": {
+        // A brand font file, once per project: bytes from the app, or a path / https URL / data URL from an agent.
         const value = request
           .extend({
-            fileName: z.string().max(255),
-            dataBase64: z.string().max(13_400_000),
+            fileName: z.string().max(255).optional(),
+            dataBase64: z.string().max(13_400_000).optional(),
+            source: z.string().min(1).max(14_000_000).optional(),
           })
           .strict()
+          .refine((item) => !!item.dataBase64 !== !!item.source, "Pass either dataBase64 or source")
           .parse(input);
-        return this.fonts.upload(root, Buffer.from(value.dataBase64, "base64"));
+        const bytes = value.source
+          ? Buffer.from(await readDesignImageSource(value.source))
+          : Buffer.from(value.dataBase64 ?? "", "base64");
+        return this.fonts.upload(root, bytes);
       }
       case "readDesignFont": {
         const value = request

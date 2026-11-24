@@ -15,7 +15,7 @@ export const DESIGN_FONT_DIRECTORY = 'assets/fonts'
 /** Largest accepted font file. */
 export const DESIGN_FONT_MAX_BYTES = 10_000_000
 /** Most faces one project may hold. */
-const MAX_FACES = 200
+const MAX_FACES = 2000
 const MANIFEST = 'fonts.json'
 const fileNamePattern = /^[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/
 const MIME_TYPES = { ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' } as const
@@ -169,7 +169,29 @@ export class CopyOSDesignFontStore {
   /** Ask Google Fonts for a family: every weight and both styles, then narrower requests for families without those. */
   private async googleFaces(family: string, source: DesignGoogleFontsSource, signal?: AbortSignal): Promise<GoogleFace[]> {
     const name = encodeURIComponent(family).replace(/%20/g, '+')
-    for (const axes of [':ital,wght@0,100..900;1,100..900', ':wght@100..900', ':ital,wght@0,400;0,700;1,400;1,700', ':wght@400;700', '']) {
+    // Families with an optical-size axis are fetched with it, so text gets the optical size of its font size as in Figma; without
+    // the axis Google serves one fixed optical size, which sets wider or narrower than Figma's.
+    const optical: string[] = []
+    try {
+      const response = await source.fetch(`https://fonts.google.com/metadata/fonts/${encodeURIComponent(family)}`, { signal: signal ?? null })
+      if (response.ok) {
+        const text = await response.text()
+        const meta = JSON.parse(text.slice(text.indexOf('{'))) as { axes?: { tag: string; min: number; max: number }[]; fonts?: Record<string, unknown> }
+        const axis = (tag: string) => meta.axes?.find(item => item.tag === tag)
+        const opsz = axis('opsz'), wght = axis('wght')
+        if (opsz) {
+          const o = `${String(opsz.min)}..${String(opsz.max)}`, w = wght ? `${String(wght.min)}..${String(wght.max)}` : ''
+          if (w) optical.push(`:ital,opsz,wght@0,${o},${w};1,${o},${w}`, `:opsz,wght@${o},${w}`)
+          else optical.push(`:ital,opsz@0,${o};1,${o}`, `:opsz@${o}`)
+        } else if (!axis('wght') && meta.fonts) {
+          // A static family (Poppins, Montserrat Alternates…): ask for every weight it has, not just 400 and 700.
+          const styles = Object.keys(meta.fonts).map(key => ({ weight: Number.parseInt(key, 10), italic: key.endsWith('i') }))
+            .filter(style => Number.isInteger(style.weight)).sort((x, y) => Number(x.italic) - Number(y.italic) || x.weight - y.weight)
+          if (styles.length) optical.push(`:ital,wght@${styles.map(style => `${style.italic ? 1 : 0},${String(style.weight)}`).join(';')}`)
+        }
+      }
+    } catch { /* metadata is optional */ }
+    for (const axes of [...optical, ':ital,wght@0,100..900;1,100..900', ':wght@100..900', ':ital,wght@0,400;0,700;1,400;1,700', ':wght@400;700', '']) {
       // Google serves WOFF2 only to clients that announce support for it.
       const response = await source.fetch(`${source.cssUrl}?family=${name}${axes}&display=swap`, { signal: signal ?? null, headers: {
         'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36' } })

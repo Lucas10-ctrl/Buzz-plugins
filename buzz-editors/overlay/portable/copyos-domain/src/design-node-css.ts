@@ -1,6 +1,6 @@
 import { designFontVariationSettings } from './design-font-variations.ts'
 import { designFontFeatureSettings } from './design-font-features.ts'
-import { designAuthoredEffects } from './design-effect-values.ts'
+import { designAuthoredEffects, designEffectIsShadow } from './design-effect-values.ts'
 import { designNodeEffects } from './design-effects.ts'
 import { designEffectSpreadSupported } from './design-effects-render.ts'
 import { nodeCssConstraints, nodeCssCanSizeContain } from './design-node-css-constraints.ts'
@@ -224,7 +224,7 @@ export function designNodeCss(document: CopyOSDesignDocument, options: DesignNod
     set('transform', `rotate(${decimal(node.rotation)}deg) scale(${node.flipX ? -1 : 1}, ${node.flipY ? -1 : 1})`)
   }
   const authoredEffects = designAuthoredEffects(designNodeEffects(node))
-  const effects = authoredEffects.filter(effect => effect.type !== 'layer-blur')
+  const effects = authoredEffects.filter(designEffectIsShadow)
     .filter(effect => effect.visible && (effect.opacity > 0 || effect.numericBindings?.opacity))
   const layerBlur = authoredEffects.find(effect => effect.type === 'layer-blur'), effectFilters: string[] = []
   const spreadSupported = designEffectSpreadSupported(node)
@@ -256,6 +256,8 @@ export function designNodeCss(document: CopyOSDesignDocument, options: DesignNod
   }
   if (layerBlur?.visible) effectFilters.push(`blur(${effectSigma(layerBlur, 'radius', layerBlur.radius)})`)
   if (effectFilters.length) set('filter', effectFilters.join(' '))
+  const backgroundBlur = authoredEffects.find(effect => effect.type === 'background-blur')
+  if (backgroundBlur?.visible) set('backdrop-filter', `blur(${effectSigma(backgroundBlur, 'radius', backgroundBlur.radius)})`)
   if ((raw.kind === 'path' || raw.kind === 'boolean')) { warning('svg-geometry', 'Vector paths require the native SVG geometry.'); require('svg-renderer', 'Use exportDesignSvg for vector geometry.') }
   if (raw.kind === 'ellipse') set('border-radius', '50%')
   else for (const [css, key] of [['top-left', 'radiusTopLeft'], ['top-right', 'radiusTopRight'],

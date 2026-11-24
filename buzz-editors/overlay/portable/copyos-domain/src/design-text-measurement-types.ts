@@ -25,6 +25,8 @@ export type DesignTextMeasurementResult = {
 /** A request-scoped font provider over a lazily shared, host-only WASM engine. */
 export interface DesignTextMeasurer {
   readonly engine: CopyOSDesignTextMeasurementEngine
+  /** The identity stored with one layer's metrics: the engine plus only the faces that layer draws with. */
+  engineFor?(node: CopyOSDesignNode): CopyOSDesignTextMeasurementEngine
   measure(node: CopyOSDesignNode): DesignTextMeasurementResult
   /**
    * Lay out a text layer and return its visible lines in layer coordinates, as the SVG text export expects.
@@ -38,11 +40,11 @@ export interface DesignTextMeasurer {
    * @param node - Effective text layer.
    * @param paint - Base text color (CSS color) and opacity; run fills keep their own colors.
    * @param scale - Output pixels per layer CSS pixel, 0–4.
-   * @returns A transparent PNG covering the layer box and any overflow, its size in layer CSS pixels and the code points the fonts
+   * @returns A transparent PNG covering the layer box, any overflow and a margin for glyph ink, its size and offset (`left`, `top`) in layer CSS pixels and the code points the fonts
    * lack (drawn as the font's missing-glyph shape), or undefined when unmeasurable.
    */
   paint(node: CopyOSDesignNode, paint: { color: string; opacity: number }, scale: number):
-  { png: Uint8Array; width: number; height: number; missingCodepoints: number[] } | undefined
+  { png: Uint8Array; width: number; height: number; left?: number; top?: number; missingCodepoints: number[] } | undefined
   dispose(): void
 }
 
@@ -51,6 +53,8 @@ export interface DesignTextMeasurerOptions {
   fonts: readonly DesignMeasurementFont[]
   /** Catalog families tried after a layer's own families for characters they lack, such as symbol fonts. */
   fallbackFamilies?: readonly string[]
+  /** The colour emoji family among the fallbacks; emoji whose default presentation is text try it last. */
+  emojiFamily?: string
   maxTextLength?: number
   maxLines?: number
 }

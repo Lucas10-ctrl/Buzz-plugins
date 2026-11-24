@@ -274,6 +274,19 @@ export interface CopyOSDesignImagePaint {
   rotation?: number | undefined
   /** Tile size as a fraction of the source's original pixel dimensions. */
   tileScale?: number | undefined
+  /** Figma `ImagePaint.filters` colour adjustments, each from -1 to 1; omitted or zero leaves the picture unchanged. */
+  filters?: CopyOSDesignImageFilters | undefined
+}
+
+/** Figma image adjustments; each value is from -1 to 1 and zero is neutral. */
+export interface CopyOSDesignImageFilters {
+  exposure?: number | undefined
+  contrast?: number | undefined
+  saturation?: number | undefined
+  temperature?: number | undefined
+  tint?: number | undefined
+  highlights?: number | undefined
+  shadows?: number | undefined
 }
 
 /** CSS-native paint compositing operators; unsupported Figma operators are not approximated. */
@@ -441,6 +454,15 @@ export interface CopyOSDesignInstanceStroke {
 export interface CopyOSDesignNode {
   /** Omission passes through for ordinary layers and inherits the current main for linked roots. */
   blendMode?: CopyOSDesignLayerBlendMode | undefined
+  /**
+   * Figma `isMask`: the layer is not drawn; instead it masks every later sibling (in paint order) of the same parent, until the
+   * parent ends or the next mask sibling starts a new mask group.
+   */
+  mask?: boolean | undefined
+  /** How a mask layer masks: its rendered alpha (default), its geometry outline (`vector`) or its luminance. */
+  maskType?: 'alpha' | 'vector' | 'luminance' | undefined
+  /** Figma corner smoothing from 0 to 1 for rounded rectangles, frames and components; 0.6 is the iOS squircle. */
+  cornerSmoothing?: number | undefined
   id: string
   parentId: string | null
   /** Imported Figma page; absent in single-page designs. */
@@ -572,7 +594,7 @@ export interface CopyOSDesignNode {
   fontSize: number
   fontWeight: number
   lineHeight: number
-  textAlign: 'left' | 'center' | 'right'
+  textAlign: 'left' | 'center' | 'right' | 'justify'
   imageUrl: string
   layout: 'none' | 'row' | 'column' | 'grid'
   gap: number
@@ -632,8 +654,21 @@ export interface CopyOSDesignLayerBlur {
   numericBindings?: { radius?: string | undefined } | undefined
 }
 
+/**
+ * Figma background blur: what is painted behind the layer is blurred (Gaussian sigma radius / 2) and shown inside the layer's
+ * shape, under its own fills. Only the host raster draws it; SVG/browser output leaves it out.
+ */
+export interface CopyOSDesignBackgroundBlur {
+  id: string
+  type: 'background-blur'
+  visible: boolean
+  radius: number
+  /** Pixel-valued radius resource; radius remains the authored literal fallback. */
+  numericBindings?: { radius?: string | undefined } | undefined
+}
+
 /** Ordered supported effects; shadow order is retained within each type and layer blur applies after composition. */
-export type CopyOSDesignEffect = CopyOSDesignShadow | CopyOSDesignLayerBlur
+export type CopyOSDesignEffect = CopyOSDesignShadow | CopyOSDesignLayerBlur | CopyOSDesignBackgroundBlur
 
 /** Reusable local effect stack; consumers resolve its resource references in their own token mode. */
 export interface CopyOSDesignEffectStyle {

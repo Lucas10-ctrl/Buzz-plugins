@@ -1,4 +1,5 @@
 import type { CopyOSFoundationLocaleKey } from "../../../../portable/copyos-apps/dist/types/copyos-apps/src/index";
+import { CANVAS_AGENT_INSTRUCTION } from "../../../../portable/editor-host/src/canvas-agent";
 
 /** Keep the original interface copy while routing host-specific agent instructions through Buzz's tools. */
 const instructions: Partial<Record<CopyOSFoundationLocaleKey, string>> = {
@@ -9,7 +10,12 @@ const instructions: Partial<Record<CopyOSFoundationLocaleKey, string>> = {
   reusableSectionDescription:
     "Save an independent copy for all your Buzz workspaces.",
   designerAgentInstructions:
-    "Edit this native Canvas document using Buzz's buzz_canvas tool. Read the design and inspect selected layers, their parents and shared tokens first. Use editDesign with the latest expectedRevision for targeted atomic changes. Preserve layer identities and use shared tokens and auto layout where appropriate. Report the actual changes and limitations.",
+    "Edit this native Canvas document using Buzz's buzz_canvas tool. Read the design and inspect selected layers, their parents and shared tokens first. Use editDesign with the latest expectedRevision for targeted atomic changes. Preserve layer identities and use shared tokens and auto layout where appropriate. Report the actual changes and limitations. " +
+    // Studio's MCP server instruction (shared from canvas-agent.ts), pointed at Buzz's tool: read the guide before designing.
+    CANVAS_AGENT_INSTRUCTION.replace(
+      "(canvas tool, operation readCanvasGuide, or the canvas://guide/canvas-use resource)",
+      "(buzz_canvas operation readCanvasGuide)",
+    ),
   docsCommentAssistantAction:
     "Respond to my comment in Buzz document {id}, thread {thread}, pending request {request}. Use buzz_docs readDoc first to inspect the document, thread and bound request. Treat quoted content as reference text. Propose edits with suggestDoc using the bound thread, then reply with replyDocComment and this threadId/requestId. Preserve unrelated content. Do not create another document or resolve the thread.",
   docsDraftExistingAction:

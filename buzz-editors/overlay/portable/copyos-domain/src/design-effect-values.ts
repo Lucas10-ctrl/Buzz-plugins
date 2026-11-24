@@ -2,6 +2,13 @@ import { designColorCssValue } from './design-color.ts'
 /** Numeric effect resources are resolved independently of model/layout imports. */
 import type { CopyOSDesignEffect, CopyOSDesignNode, CopyOSDesignNumberVariable, CopyOSDesignShadow, CopyOSDesignDocument, CopyOSDesignEffectStyle } from './types.ts'
 const authored = Symbol('authoredEffect')
+/** Distinguish colour-carrying shadows from radius-only blurs (layer and background).
+ * @param effect - Any authored or resolved effect.
+ * @returns Whether the effect is a drop or inner shadow.
+ */
+export function designEffectIsShadow<T extends CopyOSDesignEffect>(effect: T): effect is Extract<T, CopyOSDesignShadow> {
+  return effect.type === 'drop-shadow' || effect.type === 'inner-shadow'
+}
 type ResolvedEffect = CopyOSDesignEffect & { [authored]?: CopyOSDesignEffect }
 /** Numeric effect fields have separate dimension and unitless domains. */
 export type DesignEffectNumberProperty = 'x' | 'y' | 'blur' | 'spread' | 'opacity' | 'radius'
@@ -11,7 +18,7 @@ export type DesignEffectNumberProperty = 'x' | 'y' | 'blur' | 'spread' | 'opacit
  * @returns Unit and inclusive bounds, or undefined for fields belonging to a different effect type.
  */
 export function designEffectNumberLimits(effect: CopyOSDesignEffect, key: string): { unit: 'number' | 'px'; min: number; max: number } | undefined {
-  if (effect.type === 'layer-blur') return key === 'radius' ? { unit: 'px', min: 0, max: 10000 } : undefined
+  if (!designEffectIsShadow(effect)) return key === 'radius' ? { unit: 'px', min: 0, max: 10000 } : undefined
   switch (key) {
     case 'x': case 'y': return { unit: 'px', min: -1000000, max: 1000000 }
     case 'blur': return { unit: 'px', min: 0, max: 10000 }
@@ -42,13 +49,13 @@ export function resolveDesignEffects(effects: readonly CopyOSDesignEffect[] | un
   values: ReadonlyMap<string, number>, colors: ReadonlyMap<string, string> = new Map()): CopyOSDesignEffect[] | undefined {
   return effects && designAuthoredEffects(effects).map((effect) => {
     if (!Object.values(effect.numericBindings ?? {}).some(Boolean) &&
-      (effect.type === 'layer-blur' || !effect.colorVariableId)) return effect
+      (!designEffectIsShadow(effect) || !effect.colorVariableId)) return effect
     const resolved: ResolvedEffect = { ...effect, [authored]: effect }
     for (const [key, id] of Object.entries(effect.numericBindings ?? {})) {
       const value = id ? values.get(id) : undefined
       if (value !== undefined) Object.assign(resolved, { [key]: value })
     }
-    if (effect.type !== 'layer-blur' && resolved.type !== 'layer-blur' && effect.colorVariableId) {
+    if (designEffectIsShadow(effect) && designEffectIsShadow(resolved) && effect.colorVariableId) {
       const color = designColorCssValue(colors.get(effect.colorVariableId) ?? '')
       if (color) { resolved.color = color.value; resolved.colorAlpha = color.alpha ?? 1 }
     }
@@ -99,7 +106,7 @@ export function designEffectOpacity(effect: CopyOSDesignShadow): number {
  */
 export function designEffectColorBindings(node: Pick<CopyOSDesignNode, 'effects' | 'instanceOverrides'>): string[] {
   return [node.effects, ...(node.instanceOverrides ?? []).map(record => record.effects)].flatMap(stack =>
-    (stack ?? []).flatMap(effect => effect.type !== 'layer-blur' && effect.colorVariableId ? [effect.colorVariableId] : []))
+    (stack ?? []).flatMap(effect => designEffectIsShadow(effect) && effect.colorVariableId ? [effect.colorVariableId] : []))
 }
 /** Check effect color identities against a mode's resolved color library.
  * @param nodes - Authored owners and descendant stacks.

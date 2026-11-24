@@ -663,7 +663,7 @@ export function inspectDesignPage(document: CopyOSDesignDocument, request: Desig
             return style ? { id: style.id, name: style.name, description: style.description ?? null } : null
           })() : null,
           localEffects: target.localEffects ?? null, sourceEffects: target.sourceEffects,
-          shadowColors: target.effects.filter(effect => effect.type !== 'layer-blur').map(effect => ({
+          shadowColors: target.effects.filter(effect => effect.type === 'drop-shadow' || effect.type === 'inner-shadow').map(effect => ({
             effectId: effect.id, resolvedRGB: effect.color, resourceAlpha: designEffectColorAlpha(effect),
             opacity: effect.opacity, effectiveOpacity: designEffectOpacity(effect),
           })),

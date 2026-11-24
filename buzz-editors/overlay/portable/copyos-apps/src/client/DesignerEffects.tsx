@@ -48,6 +48,11 @@ type EditorContext = Pick<
 type Owner = { nodeId: string; path?: readonly string[]; locked?: boolean }
 type NumberKey = 'x' | 'y' | 'blur' | 'spread' | 'opacity' | 'radius'
 type EffectType = CopyOSDesignEffect['type']
+type BlurEffect = Extract<CopyOSDesignEffect, { type: 'layer-blur' | 'background-blur' }>
+/** Layer and background blurs are radius-only rows; shadows carry colour and offsets. */
+const isBlur = (effect: CopyOSDesignEffect | undefined): effect is BlurEffect =>
+  effect?.type === 'layer-blur' || effect?.type === 'background-blur'
+const isBlurType = (type: EffectType | null | undefined): type is BlurEffect['type'] => type === 'layer-blur' || type === 'background-blur'
 type Translate = (key: CopyOSFoundationLocaleKey) => string
 const fields = [
   { key: 'x', labelKey: 'designerShadowX', short: 'X', min: -1000000, max: 1000000 },
@@ -213,7 +218,7 @@ export function DesignerEffects({
       index,
       (effect) => {
         if (
-          effect.type === 'layer-blur' ||
+          isBlur(effect) ||
           (Object.keys(values) as (keyof CopyOSDesignShadow)[]).every(
             key => effect[key] === values[key] && !bindingFor(effect, key as NumberKey),
           )
@@ -239,22 +244,22 @@ export function DesignerEffects({
   ): CopyOSDesignShadow[K] | null => {
     const values = nonempty.map((item) => {
       const effect = item.context?.effects[index]
-      return effect && effect.type !== 'layer-blur' ? effect[key] : undefined
+      return effect && !isBlur(effect) ? effect[key] : undefined
     })
     return values.every(value => value === values[0]) ? (values[0] ?? null) : null
   }
   const convert = (index: number, type: EffectType): boolean =>
     update(index, (effect) => {
       if (effect.type === type) return effect
-      if (type === 'layer-blur')
+      if (isBlurType(type))
         return {
           id: effect.id,
           type,
           visible: effect.visible,
-          radius: effect.type === 'layer-blur' ? effect.radius : effect.blur,
+          radius: isBlur(effect) ? effect.radius : effect.blur,
           ...(bindingFor(effect, 'blur') ? { numericBindings: { radius: bindingFor(effect, 'blur') } } : {}),
         }
-      return effect.type === 'layer-blur'
+      return isBlur(effect)
         ? {
           id: effect.id,
           type,
@@ -277,15 +282,15 @@ export function DesignerEffects({
     const read = origin.current?.read ?? readEffects
     const owner = nonempty[0]?.owner
     const primary = owner ? read(owner.nodeId, owner.path)?.effects[index] : undefined
-    if (!primary || primary.type === 'layer-blur') return false
+    if (!primary || isBlur(primary)) return false
     const colorChanged = color.toLowerCase() !== primary.color.toLowerCase()
     const alphaChanged = Math.abs(opacity - designEffectOpacity(primary)) > 0.000001
     if (!colorChanged && !alphaChanged) return origin.current ? apply(effects => effects, transient) : true
     return apply((effects, _owner, current) => {
       const changed = effects.map((effect, at) => {
-        if (at !== index || effect.type === 'layer-blur') return effect
+        if (at !== index || isBlur(effect)) return effect
         const resolved = current.effects.find(item => item.id === effect.id)
-        if (!resolved || resolved.type === 'layer-blur') return effect
+        if (!resolved || isBlur(resolved)) return effect
         const intrinsic = designEffectColorAlpha(resolved)
         const { colorVariableId: _reference, ...literal } = effect
         if (!alphaChanged) {
@@ -317,9 +322,9 @@ export function DesignerEffects({
   const detachColor = (index: number): boolean =>
     apply((effects, _owner, current) => {
       const changed = effects.map((effect, at) => {
-        if (at !== index || effect.type === 'layer-blur' || !effect.colorVariableId) return effect
+        if (at !== index || isBlur(effect) || !effect.colorVariableId) return effect
         const resolved = current.effects.find(item => item.id === effect.id)
-        if (!resolved || resolved.type === 'layer-blur') return effect
+        if (!resolved || isBlur(resolved)) return effect
         const { colorVariableId: _reference, ...literal } = effect
         return { ...literal, color: resolved.color, colorAlpha: designEffectColorAlpha(resolved) }
       })
@@ -330,7 +335,7 @@ export function DesignerEffects({
   const numberValue = (effect: CopyOSDesignEffect | undefined, key: NumberKey): number | undefined =>
     !effect
       ? undefined
-      : effect.type === 'layer-blur'
+      : isBlur(effect)
         ? key === 'radius'
           ? effect.radius
           : undefined
@@ -424,7 +429,7 @@ export function DesignerEffects({
     )
   }
   const newEffect = (type: EffectType): CopyOSDesignEffect =>
-    type === 'layer-blur'
+    isBlurType(type)
       ? { id: randomUUID(), type, visible: true, radius: 8 }
       : {
         id: randomUUID(),
@@ -439,7 +444,7 @@ export function DesignerEffects({
       }
   const canAppend = (effects: readonly CopyOSDesignEffect[], type: EffectType): boolean =>
     effects.length < 17 &&
-    effects.filter(effect => effect.type === type).length < (type === 'layer-blur' ? 1 : 8)
+    effects.filter(effect => effect.type === type).length < (isBlurType(type) ? 1 : 8)
   const canAdd = (type: EffectType): boolean =>
     editable.length > 0 && editable.every(item => canAppend(item.context?.effects ?? [], type))
   const addType: EffectType =
@@ -461,7 +466,7 @@ export function DesignerEffects({
       return (
         !effect ||
         effect.type === type ||
-        effects.filter(current => current.type === type).length < (type === 'layer-blur' ? 1 : 8)
+        effects.filter(current => current.type === type).length < (isBlurType(type) ? 1 : 8)
       )
     })
   const inherited = contexts.some(
@@ -626,10 +631,10 @@ export function DesignerEffects({
           )
           const disabled = !editable.some(item => item.context?.effects[index])
           const type = common(index, 'type')
-          const shadowRow = nonempty.every(item => item.context?.effects[index]?.type !== 'layer-blur')
+          const shadowRow = nonempty.every(item => !isBlur(item.context?.effects[index]))
           const radii = nonempty.map((item) => {
             const effect = item.context?.effects[index]
-            return effect?.type === 'layer-blur' ? effect.radius : undefined
+            return isBlur(effect) ? effect.radius : undefined
           })
           const radius = radii.every(value => value === radii[0]) ? (radii[0] ?? null) : null
           const typeLabel =
@@ -637,15 +642,15 @@ export function DesignerEffects({
               ? t('designerDropShadow')
               : type === 'inner-shadow'
                 ? t('designerInnerShadow')
-                : type === 'layer-blur'
+                : isBlurType(type)
                   ? t('designerLayerBlur')
                   : t('designerMixed')
           const primaryContext = nonempty[0]?.context
           const resources = colorResources(primaryContext)
           const colorBinding = commonShadow(index, 'colorVariableId')
           const boundResource = resources.find(resource => resource.id === colorBinding)
-          const intrinsicAlpha = effect.type !== 'layer-blur' ? designEffectColorAlpha(effect) : 1
-          const combinedAlpha = effect.type !== 'layer-blur' ? designEffectOpacity(effect) : 1
+          const intrinsicAlpha = !isBlur(effect) ? designEffectColorAlpha(effect) : 1
+          const combinedAlpha = !isBlur(effect) ? designEffectOpacity(effect) : 1
           return (
             <div key={rowKey} className={css.row} role="group" aria-label={`${typeLabel} ${count - index}`}>
               <div className={css.rowHeading}>
@@ -721,7 +726,7 @@ export function DesignerEffects({
                   type="button"
                   disabled={disabled}
                   aria-label={label(
-                    type === 'layer-blur' ? 'designerRemoveEffect' : 'designerRemoveShadow',
+                    isBlurType(type) ? 'designerRemoveEffect' : 'designerRemoveShadow',
                     index,
                   )}
                   onClick={() => {
@@ -733,7 +738,7 @@ export function DesignerEffects({
                   −
                 </button>
               </div>
-              {type === 'layer-blur' ? (
+              {isBlurType(type) ? (
                 <div className={css.fields}>
                   <div className={css.numeric}>
                     <DesignerNumberField
@@ -748,7 +753,7 @@ export function DesignerEffects({
                       disabled={disabled}
                       onCommit={value =>
                         update(index, effect =>
-                          effect.type === 'layer-blur' &&
+                          isBlur(effect) &&
                             (effect.radius !== value || !!effect.numericBindings?.radius)
                             ? {
                               ...effect,
@@ -805,7 +810,7 @@ export function DesignerEffects({
                           paint={designColorVariableCss({
                             value:
                                 commonShadow(index, 'color') ??
-                                (effect.type !== 'layer-blur' ? effect.color : '#000000'),
+                                (!isBlur(effect) ? effect.color : '#000000'),
                             alpha: intrinsicAlpha,
                           })}
                         />
@@ -820,7 +825,7 @@ export function DesignerEffects({
                               const effect = item.context?.effects[index]
                               return (
                                 effect &&
-                                  effect.type !== 'layer-blur' &&
+                                  !isBlur(effect) &&
                                   designEffectColorAlpha(effect) === intrinsicAlpha
                               )
                             })
@@ -836,7 +841,7 @@ export function DesignerEffects({
                         key={pickerVersion}
                         color={
                           commonShadow(index, 'color') ??
-                            (effect.type !== 'layer-blur' ? effect.color : '#000000')
+                            (!isBlur(effect) ? effect.color : '#000000')
                         }
                         opacity={combinedAlpha}
                         opacityLabel={t('designerColorAlpha')}
@@ -851,7 +856,7 @@ export function DesignerEffects({
                         onCancel={cancel}
                         onVariable={(variable) => {
                           update(index, effect =>
-                            effect.type === 'layer-blur' || effect.colorVariableId === variable.id
+                            isBlur(effect) || effect.colorVariableId === variable.id
                               ? effect
                               : { ...effect, colorVariableId: variable.id },
                           )
@@ -859,7 +864,7 @@ export function DesignerEffects({
                       />
                       {nonempty.some((item) => {
                         const effect = item.context?.authoredEffects[index]
-                        return effect?.type !== 'layer-blur' && effect?.colorVariableId
+                        return !isBlur(effect) && effect?.colorVariableId
                       }) ? (
                           <button
                             type="button"

@@ -11,7 +11,7 @@ import { DesignerImagePattern } from './DesignerImagePattern.tsx'
 import { loadDesignerImageElement, useDesignerImageAssets, useDesignerImageHref } from './DesignerImageAssets.ts'
 import css from './PageDesignerWorkspace.module.css'
 type Dimensions = Pick<CopyOSDesignImagePaint, 'sourceWidth' | 'sourceHeight'>
-type ImageSettings = Partial<Omit<CopyOSDesignImagePaint, 'url' | 'scaleMode'>>
+type ImageSettings = Partial<Omit<CopyOSDesignImagePaint, 'url' | 'scaleMode' | 'filters'>>
 /** Render image replacement and sizing without changing the layer's geometry.
  * @param props - Current paint, localized controls and commit callback.
  * @returns Image preview, upload and aspect-ratio controls.

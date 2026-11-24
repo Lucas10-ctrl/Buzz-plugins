@@ -339,7 +339,7 @@ export function importDesignClipboard(input: CopyOSDesignDocument, clipboard: Co
   const resourceId = (id: string | null | undefined, kind: keyof typeof resources = 'color'): string | null | undefined =>
     id ? resources[kind].get(id) ?? id : id
   const effect = (value: import('./types.ts').CopyOSDesignEffect): import('./types.ts').CopyOSDesignEffect => ({ ...value,
-    id: allocate(), ...(value.type !== 'layer-blur' ? { colorVariableId: resourceId(value.colorVariableId) ?? undefined } : {}),
+    id: allocate(), ...(value.type === 'drop-shadow' || value.type === 'inner-shadow' ? { colorVariableId: resourceId(value.colorVariableId) ?? undefined } : {}),
     numericBindings: value.numericBindings && Object.fromEntries(Object.entries(value.numericBindings)
       .map(([key, id]) => [key, resourceId(id, 'number') ?? undefined])),
   })
