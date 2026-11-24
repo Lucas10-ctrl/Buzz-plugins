@@ -23,6 +23,8 @@ async function ser(n) {
   if ('layoutMode' in n && n.layoutMode !== 'NONE') Object.assign(o, { layoutMode: n.layoutMode, itemSpacing: n.itemSpacing, counterAxisSpacing: n.counterAxisSpacing, layoutWrap: n.layoutWrap,
     pad: [n.paddingTop, n.paddingRight, n.paddingBottom, n.paddingLeft], main: n.primaryAxisAlignItems, cross: n.counterAxisAlignItems, mainSizing: n.primaryAxisSizingMode, crossSizing: n.counterAxisSizingMode })
   if ('layoutSizingHorizontal' in n) { o.sizeH = n.layoutSizingHorizontal; o.sizeV = n.layoutSizingVertical }
+  if ('minWidth' in n) { const lim = {}; for (const f of ['minWidth', 'maxWidth', 'minHeight', 'maxHeight']) { const v = n[f]; if (v !== undefined && v !== null && v !== 'auto' && !(f.startsWith('min') && v === 0)) lim[f] = v } if (Object.keys(lim).length) o.limits = lim }
+  if ('targetAspectRatio' in n && n.targetAspectRatio) o.aspectRatio = n.targetAspectRatio.aspectRatio
   if ('layoutPositioning' in n) o.absolute = n.layoutPositioning === 'ABSOLUTE'
   if ('effects' in n && n.effects.length) o.effects = n.effects.map(e => ({ type: e.type, visible: e.visible, radius: e.radius, spread: e.spread, offset: e.offset, color: e.color ? rgb(e.color) : undefined }))
   if (n.boundVariables) { const b = {}; for (const f of FIELDS) { const v = n.boundVariables[f]; if (v && !Array.isArray(v)) b[f] = await vname(v.id); if (Array.isArray(v) && v.length) b[f] = await vname(v[0].id) } if (Object.keys(b).length) o.bound = b }
