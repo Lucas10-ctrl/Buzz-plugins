@@ -37,7 +37,11 @@ Topics (read with `readCanvasGuide {topic}`, or the MCP resource `canvas://guide
    font installs itself on first use, with all its weights and italics; Inter is built in. Brand fonts that are not on Google
    are uploaded once per project with `uploadDesignFont {source: '/path/Brand-Bold.otf'}` and then load the same way.
    Style names are Figma's: `Thin`, `ExtraLight`, `Light`, `Regular`, `Medium`, `SemiBold`, `Bold`, `ExtraBold`, `Black`, plus
-   `Italic` (`Bold Italic`). A style the family lacks throws `Font "X Y" has no such style. Installed styles: …`.
+   `Italic` (`Bold Italic`). A made-up style (`Foo`, `Bold Condensed`) or one the family lacks throws
+   `Font "X Y" has no such style. Installed styles: …` from `loadFontAsync`, `fontName` and `setRangeFontName`; it is never
+   drawn as Regular. Canvas is lenient only about spelling: `Semibold`, `Semi Bold` and `SemiBold` all mean 600, because
+   Figma's own names differ per font (Inter says `Semi Bold`, Poppins `SemiBold`). Figma accepts only the font's exact name,
+   so a script meant for Figma should use the name Figma lists for that font.
    There is no limit on how many fonts a project uses.
 7. **`resize()` sets both sizing modes to FIXED**, exactly as Figma does. Call `resize()` first, then set
    `primaryAxisSizingMode` / `counterAxisSizingMode = 'AUTO'` or `layoutSizing* = 'HUG'`. A frame resized after you asked it to

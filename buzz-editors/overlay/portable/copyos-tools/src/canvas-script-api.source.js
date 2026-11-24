@@ -207,12 +207,32 @@
     ['book', 400], ['medium', 500], ['semibold', 600], ['demibold', 600], ['extrabold', 800], ['ultrabold', 800], ['bold', 700],
     ['black', 900], ['heavy', 900]]
   const NAMES = { 100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black' }
-  function parseStyle(style) {
-    const key = String(style || 'Regular').toLowerCase().replace(/[\s_-]+/g, '')
+  // Lenient only about spelling: Figma's own names differ per font file (Inter has "Semi Bold", Poppins "SemiBold"), so case,
+  // spaces, hyphens and underscores are ignored. A word that names no weight ("Foo", "Bold Condensed") is not a style.
+  function parseStyleOrNull(style) {
+    const key = String(style === undefined ? 'Regular' : style).toLowerCase().replace(/[\s_-]+/g, '')
     const italic = key.includes('italic') || key.includes('oblique')
     const rest = key.replace('italic', '').replace('oblique', '')
-    const found = WEIGHTS.find(([name]) => rest === name) || WEIGHTS.find(([name]) => rest.startsWith(name))
-    return { weight: rest === '' ? 400 : found ? found[1] : 400, italic }
+    if (rest === '') return { weight: 400, italic }
+    const found = WEIGHTS.find(([name]) => rest === name)
+    return found ? { weight: found[1], italic } : null
+  }
+  function parseStyle(style) { return parseStyleOrNull(style) || { weight: 400, italic: false } }
+  function installedStyles(family) {
+    const prefix = familyOf(family).toLowerCase() + '|'
+    const faces = [...loadedFonts].filter(face => face.startsWith(prefix)).map(face => face.split('|'))
+      .sort((a, b) => Number(a[1]) - Number(b[1]) || (a[2] === 'italic') - (b[2] === 'italic'))
+    return faces.length ? faces.map(([, weight, style]) => styleName(Number(weight), style === 'italic')).join(', ') : 'none loaded yet'
+  }
+  function noSuchStyle(family, style) {
+    return new Error('Font "' + familyOf(family) + ' ' + style + '" has no such style. Installed styles: ' + installedStyles(family))
+  }
+  // For fontName and range fonts: a made-up style throws instead of being drawn as Regular.
+  function styleOf(fontName) {
+    if (!fontName || typeof fontName !== 'object' || !fontName.family) throw new Error('fontName is { family, style }')
+    const parsed = parseStyleOrNull(fontName.style)
+    if (!parsed) throw noSuchStyle(fontName.family, fontName.style)
+    return parsed
   }
   function styleName(weight, italic) {
     const name = NAMES[Math.round((weight || 400) / 100) * 100] || 'Regular'
@@ -371,7 +391,7 @@
       set name(value) { record.name = String(value) },
       get fontName() { return { family: familyOf(record.fontFamily), style: styleName(record.fontWeight, record.fontStyle === 'italic') } },
       set fontName(value) {
-        const parsed = parseStyle(value.style)
+        const parsed = styleOf(value)
         requireFont(value.family, parsed.weight, parsed.italic)
         record.fontFamily = cssFamily(value.family); record.fontWeight = parsed.weight; record.fontStyle = parsed.italic ? 'italic' : 'normal'; apply()
       },
@@ -711,7 +731,7 @@
         writeText(text(), rangeRuns(runs(), text().length, start, end, { fill: rgbToHex(solid.color) }))
       },
       setRangeFontName(start, end, fontName) {
-        const parsed = parseStyle(fontName.style)
+        const parsed = styleOf(fontName)
         requireFont(fontName.family, parsed.weight, parsed.italic)
         writeText(text(), rangeRuns(runs(), text().length, start, end, { fontFamily: cssFamily(fontName.family), fontWeight: parsed.weight, fontStyle: parsed.italic ? 'italic' : 'normal' }))
       },
@@ -1082,7 +1102,7 @@
         set(value) {
           edit(n => {
             if (value === mixed) return
-            const parsed = parseStyle(value.style)
+            const parsed = styleOf(value)
             requireFont(value.family, parsed.weight, parsed.italic)
             n.fontFamily = cssFamily(value.family); n.fontWeight = parsed.weight; n.fontStyle = parsed.italic ? 'italic' : 'normal'
             n.textStyleId = null
@@ -1213,7 +1233,7 @@
       setRange(start, end, { fill: rgbToHex(solid.color) })
     }
     self.setRangeFontName = (start, end, fontName) => {
-      const parsed = parseStyle(fontName.style)
+      const parsed = styleOf(fontName)
       requireFont(fontName.family, parsed.weight, parsed.italic)
       setRange(start, end, { fontFamily: cssFamily(fontName.family), fontWeight: parsed.weight, fontStyle: parsed.italic ? 'italic' : 'normal' })
     }
@@ -1579,15 +1599,16 @@
     async getNodeByIdAsync(id) { return figma.getNodeById(id) },
     async loadFontAsync(fontName) {
       if (!fontName || !fontName.family) throw new Error('loadFontAsync takes { family, style }')
-      const parsed = parseStyle(fontName.style)
-      const key = familyOf(fontName.family).toLowerCase() + '|' + parsed.weight + '|' + (parsed.italic ? 'italic' : 'normal')
-      if (loadedFonts.has(key)) return
-      const answer = await callAsync('font', { family: familyOf(fontName.family), style: fontName.style || 'Regular' })
+      const parsed = parseStyleOrNull(fontName.style)
+      const style = fontName.style === undefined ? 'Regular' : String(fontName.style)
+      const key = parsed && familyOf(fontName.family).toLowerCase() + '|' + parsed.weight + '|' + (parsed.italic ? 'italic' : 'normal')
+      if (key && loadedFonts.has(key)) return
+      // Install the family first even for a made-up style, so the error lists the styles it really has.
+      const answer = await callAsync('font', { family: familyOf(fontName.family), style: parsed ? style : 'Regular' })
       loadedFonts = new Set(answer.fonts.map(face => face.toLowerCase()))
       installedFamilies = answer.families
       touch()
-      if (!loadedFonts.has(key)) throw new Error('Font "' + fontName.family + ' ' + (fontName.style || 'Regular') + '" has no such style. Installed styles: ' +
-        answer.fonts.filter(face => face.toLowerCase().startsWith(familyOf(fontName.family).toLowerCase() + '|')).join(', '))
+      if (!key || !loadedFonts.has(key)) throw noSuchStyle(fontName.family, style)
     },
     async listAvailableFontsAsync() {
       return [...loadedFonts].map(face => { const [family, weight, style] = face.split('|'); const name = installedFamilies.find(item => item.toLowerCase() === family) || family

@@ -768,7 +768,7 @@ export class CanvasStore {
           .refine((item) => !!item.dataBase64 !== !!item.source, "Pass either dataBase64 or source")
           .parse(input);
         const bytes = value.source
-          ? Buffer.from(await readDesignImageSource(value.source))
+          ? Buffer.from(await readDesignImageSource(value.source, undefined, "font"))
           : Buffer.from(value.dataBase64 ?? "", "base64");
         return this.fonts.upload(root, bytes);
       }

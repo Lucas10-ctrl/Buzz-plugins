@@ -43,7 +43,7 @@ substituted fonts, missing pictures and missing glyphs.
 ## Error messages and what they mean
 | Message | Fix |
 |---|---|
-| `Font "Poppins SemiBold" has no such style. Installed styles: …` | Use one of the listed styles, or check the family on Google Fonts. |
+| `Font "Poppins Foo" has no such style. Installed styles: …` | Thrown by `loadFontAsync`, `fontName` or `setRangeFontName` for a made-up style or one the family lacks. Use one of the listed styles. Case and spaces are ignored in Canvas (`Semibold` = `SemiBold`), not in Figma. |
 | `Cannot write to node with unloaded font "X Y"` | `await figma.loadFontAsync({ family: 'X', style: 'Y' })` first. |
 | `object is not extensible: TEXT "Title" has no property "fontWeight"` | Not a Figma property (or read-only): use `fontName`. |
 | `x is not supported in Canvas yet. …` | A Figma feature Canvas lacks; follow the alternative in the message. |

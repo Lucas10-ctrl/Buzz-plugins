@@ -24,7 +24,11 @@ t.textAutoResize = 'HEIGHT'; t.resize(880, t.height)   // wraps at 880
 
 ## Fonts
 - `await figma.loadFontAsync(...)` before `characters`, `fontName`, `fontSize`, range calls or styles that use the font.
-- Use Figma's style names: `SemiBold`, not `Semibold` or `Semi Bold`; `Bold Italic`, not `BoldItalic`.
+- Use the font's own style name as Figma lists it: `SemiBold` for Poppins and most Google fonts, `Semi Bold` for Figma's Inter;
+  `Bold Italic`, not `BoldItalic`. Canvas ignores case and spaces in style names (`Semibold` works here), Figma does not,
+  so a script that must also run in Figma needs the exact name.
+- A style that names no weight (`Foo`, `Bold Condensed`) or that the family lacks throws `has no such style` in Canvas, as
+  in Figma. It is never quietly drawn as Regular.
 - SF Pro, Helvetica Neue and other system fonts are not Google fonts: use Inter (or upload the brand file once with
   `uploadDesignFont {source}`).
 - Canvas installs Google fonts with every static weight and the optical-size axis, so DM Sans, Inter and Roboto Flex match

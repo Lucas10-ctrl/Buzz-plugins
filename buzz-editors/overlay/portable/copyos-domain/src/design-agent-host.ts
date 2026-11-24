@@ -34,9 +34,10 @@ const fonts = new CopyOSDesignFontStore()
  * Read picture bytes from a local path, an http(s) URL or a data: URL.
  * @param source - `/abs/path.png`, `~/path.png`, `https://…` or `data:image/png;base64,…`.
  * @param base - Directory that relative paths resolve against.
+ * @param what - What the file is, for error messages ('picture' or 'font').
  * @returns The bytes; whether they are a picture is checked when they are stored.
  */
-export async function readDesignImageSource(source: string, base = process.cwd()): Promise<Uint8Array> {
+export async function readDesignImageSource(source: string, base = process.cwd(), what = 'picture'): Promise<Uint8Array> {
   const value = source.trim()
   if (value.startsWith('data:')) {
     const match = /^data:[^;,]*(;base64)?,(.*)$/s.exec(value)
@@ -45,16 +46,16 @@ export async function readDesignImageSource(source: string, base = process.cwd()
   }
   if (/^https?:\/\//i.test(value)) {
     const response = await fetch(value, { signal: AbortSignal.timeout(30_000), redirect: 'follow' })
-    if (!response.ok) throw new Error(`The picture URL answered ${String(response.status)}`)
+    if (!response.ok) throw new Error(`The ${what} URL answered ${String(response.status)}`)
     const length = Number(response.headers.get('content-length') ?? 0)
-    if (length > DESIGN_IMAGE_ASSET_MAX_BYTES) throw new Error('The picture is too large')
+    if (length > DESIGN_IMAGE_ASSET_MAX_BYTES) throw new Error(`The ${what} is too large`)
     return new Uint8Array(await response.arrayBuffer())
   }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) throw new Error('Pictures come from a file path, an http(s) URL or a data: URL')
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) throw new Error(`A ${what} comes from a file path, an http(s) URL or a data: URL`)
   const path = value.startsWith('~/') ? join(homedir(), value.slice(2)) : isAbsolute(value) ? value : resolve(base, value)
   const info = await stat(path).catch(() => undefined)
-  if (!info?.isFile()) throw new Error(`No picture file at ${path}`)
-  if (info.size > DESIGN_IMAGE_ASSET_MAX_BYTES) throw new Error('The picture is too large')
+  if (!info?.isFile()) throw new Error(`No ${what} file at ${path}`)
+  if (info.size > DESIGN_IMAGE_ASSET_MAX_BYTES) throw new Error(`The ${what} is too large`)
   return new Uint8Array(await readFile(path))
 }
 
