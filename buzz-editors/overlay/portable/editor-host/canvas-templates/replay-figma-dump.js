@@ -113,6 +113,10 @@ async function build(n, parent, parentAuto) {
     if (n.absolute) node.layoutPositioning = 'ABSOLUTE'
     if (n.sizeH) node.layoutSizingHorizontal = n.sizeH
     if (n.sizeV) node.layoutSizingVertical = n.sizeV
+    // Figma min/max sizes (raw values, e.g. the Offer slot/product square is capped by a max height).
+    if (n.limits) { for (const key of ['minWidth', 'maxWidth', 'minHeight', 'maxHeight']) if (n.limits[key] !== undefined) node[key] = n.limits[key] }
+    // An aspect-ratio lock with no max height: cap the height so the shape stays proportional in Canvas.
+    if (n.aspectRatio && n.limits && n.limits.maxHeight === undefined) node.maxHeight = Math.round(n.w / n.aspectRatio)
   }
   if (!parentAuto || n.absolute) { node.x = n.x; node.y = n.y }
   if (n.rotation) node.rotation = n.rotation
