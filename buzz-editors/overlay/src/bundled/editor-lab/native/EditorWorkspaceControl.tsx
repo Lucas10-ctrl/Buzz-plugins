@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { WorkspacePicker } from "./WorkspacePicker";
 import type { RelaySession } from "../../../features/relay/session";
-import { WorkspaceControl } from "../../../features/solo/WorkspaceControl";
 import { AlertDialog } from "../../../shared/design-system/ui/AlertDialog";
 import { Button } from "../../../shared/design-system/ui/Button";
 
@@ -36,7 +36,7 @@ export function EditorWorkspaceControl({
   const [error, setError] = useState("");
   return (
     <>
-      <WorkspaceControl
+      <WorkspacePicker
         session={session}
         value={projectId}
         disabled={disabled}

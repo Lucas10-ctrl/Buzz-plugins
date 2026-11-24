@@ -6,11 +6,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { WorkspacePicker } from "./WorkspacePicker";
 import type { PluginModule } from "../../../plugins/api";
 import type { PageNavigation } from "../../../features/navigation/service";
 import { Button } from "../../../shared/design-system/ui/Button";
 import { AlertDialog } from "../../../shared/design-system/ui/AlertDialog";
-import { WorkspaceControl } from "../../../features/solo/WorkspaceControl";
 import { editorWorkspaceId, workspacePreferences } from "./workspace";
 import { FullPageSurface } from "../../../shared/design-system/ui/FullPageSurface";
 import {
@@ -311,7 +311,7 @@ function DocsView({
             </>
           }
         >
-          <WorkspaceControl
+          <WorkspacePicker
             session={session}
             value={moving.projectId}
             disabled={moveBusy}

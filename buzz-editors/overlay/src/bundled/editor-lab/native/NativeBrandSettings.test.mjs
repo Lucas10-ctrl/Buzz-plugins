@@ -19,8 +19,8 @@ import { editorWorkspaceId, editorWorkspaceKey } from "./workspace";
 import { writeView } from "../../../shared/view-state";
 
 // The shared control owns its menu. This fixture drives only its project selection callback.
-vi.mock("../../../features/solo/WorkspaceControl", () => ({
-  WorkspaceControl: ({ value, onChange }) =>
+vi.mock("./WorkspacePicker", () => ({
+  WorkspacePicker: ({ value, onChange }) =>
     createElement(
       "select",
       {

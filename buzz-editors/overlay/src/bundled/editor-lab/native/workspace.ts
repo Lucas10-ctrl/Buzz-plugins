@@ -10,9 +10,13 @@ type WorkspaceRecord = Readonly<{
 }>;
 /** The part of a workspace preferences store the editors read. */
 export type WorkspacePreferences = Readonly<{
-  snapshot: () => Readonly<{ data?: WorkspaceRecord | null | undefined }>;
+  snapshot: () => Readonly<{
+    status?: string;
+    data?: WorkspaceRecord | null | undefined;
+  }>;
   subscribe: (listener: () => void) => () => void;
   ensure: () => Promise<unknown> | unknown;
+  refresh?: () => Promise<unknown> | unknown;
 }>;
 
 /**
