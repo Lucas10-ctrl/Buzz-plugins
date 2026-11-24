@@ -75,50 +75,79 @@ function removeProfile(profileDir) {
   }
 }
 
-// The temporary launch profile keeps the Chrome process bound to a directory
-// we created, which makes orphans identifiable and safe to kill.
-function isWebCloneChrome(entry) {
-  return entry.cmdline.some((arg) => arg.includes(PROFILE_MARKER));
+// /proc/<pid>/stat field 22 (starttime), the value that distinguishes a live
+// process from a later one that reused the same pid. Null when the pid is gone.
+function processStartTime(pid) {
+  try {
+    const stat = fs.readFileSync(path.join("/proc", String(pid), "stat"), "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
+    // fields[0] is stat field 3 (state) once pid and comm are stripped.
+    return Number(fields[19]) || null;
+  } catch {
+    return null;
+  }
 }
 
-// A launcher script that dies gets its Chrome children reparented to init or
-// to a subreaper (systemd --user on this machine), so "parent is alive" is
-// not enough. A reparented process is detected three ways: adopted by init,
-// adopted by a process that started later than it, or adopted by something
-// that could not have launched it — a real parent is always the node process
-// that spawned the browser, never an init-like reaper.
-function isOrphaned(entry, byPid) {
-  if (entry.ppid === process.pid) return false;
-  if (entry.ppid <= 1) return true;
-  const parent = byPid.get(entry.ppid);
-  if (!parent) return true;
-  if (parent.startTime > entry.startTime) return true;
-  return !parent.cmdline.some((arg) => arg.includes("node"));
+const USER_DATA_DIR_PREFIX = "--user-data-dir=";
+
+// Only Chrome's MAIN browser process matches: no `--type=` argument (helpers
+// carry `--type=renderer`, `--type=zygote`, ...) and an argument that STARTS
+// with `--user-data-dir=<tmpdir>/od-web-clone-browser-`. A command line that
+// merely mentions the marker — a shell, grep, rm, a log path — never matches.
+// Returns the profile dir on a match, null otherwise.
+function cloneChromeProfileDir(entry) {
+  let profileDir = null;
+  for (const arg of entry.cmdline) {
+    if (arg.startsWith("--type=")) return null;
+    if (arg.startsWith(`${USER_DATA_DIR_PREFIX}${os.tmpdir()}/${PROFILE_MARKER}`)) {
+      profileDir = arg.slice(USER_DATA_DIR_PREFIX.length);
+    }
+  }
+  return profileDir;
 }
 
-// Fix for the hours-long leak: Chrome processes whose launching script died
-// without closing them. Only processes carrying the `od-web-clone-browser-`
-// profile marker are touched, and only when their launcher is gone.
-// Returns the pids it killed.
+// The launcher records its pid and start time in the profile before Chrome
+// starts. The Chrome is only swept when that exact launcher is gone: its pid
+// vanished, or the pid now belongs to a different process (start time differs).
+function launcherIsGone(profileDir) {
+  let record;
+  try {
+    record = JSON.parse(fs.readFileSync(path.join(profileDir, "launcher.json"), "utf8"));
+  } catch {
+    // Without the launcher record there is no proof the launcher died —
+    // leave the process alone.
+    return false;
+  }
+  const pid = Number(record?.pid);
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  const startTime = processStartTime(pid);
+  if (startTime === null) return true;
+  return startTime !== Number(record?.startTime);
+}
+
+// Fix for the hours-long leak: Chrome process groups whose launching script
+// died without closing them. Only real clone Chromes (main browser process
+// bound to one of our temp profiles) whose recorded launcher is gone are
+// touched; each is killed as a whole process group — never a single helper —
+// and its profile folder is removed. Returns the pids it killed.
 export function sweepOrphanedBrowsers() {
   if (!IS_POSIX) return [];
-  const table = readProcessTablePosix();
-  const byPid = new Map(table.map((entry) => [entry.pid, entry]));
   const killed = [];
-  for (const entry of table) {
-    if (!isWebCloneChrome(entry)) continue;
+  for (const entry of readProcessTablePosix()) {
     if (entry.state === "Z") continue;
-    if (!isOrphaned(entry, byPid)) continue;
+    const profileDir = cloneChromeProfileDir(entry);
+    if (!profileDir) continue;
+    if (!launcherIsGone(profileDir)) continue;
     try {
+      // Chrome was launched detached, so its pid is its process-group id and
+      // -pid signals the browser plus every renderer/zygote it spawned.
       process.kill(-entry.pid, "SIGKILL");
     } catch {
-      try {
-        process.kill(entry.pid, "SIGKILL");
-      } catch {
-        continue;
-      }
+      // Not a group leader, so not one of ours — never kill a single process.
+      continue;
     }
     killed.push(entry.pid);
+    removeProfile(profileDir);
   }
   return killed;
 }
@@ -607,11 +636,16 @@ function installProcessCleanupHandlers() {
   };
   const signalHandler = (signal) => {
     hardCleanup();
-    // Restore the default behaviour and re-raise so the exit status matches.
-    process.removeAllListeners("SIGINT");
-    process.removeAllListeners("SIGTERM");
-    process.removeAllListeners("exit");
-    process.kill(process.pid, signal);
+    // Remove only OUR OWN handlers — removeAllListeners would strip the
+    // calling script's SIGINT/SIGTERM/exit handlers too.
+    process.off("SIGINT", signalHandler);
+    process.off("SIGTERM", signalHandler);
+    process.off("exit", hardCleanup);
+    // Restore the default behaviour and re-raise so the exit status matches,
+    // but only when no other listener still handles this signal.
+    if (process.listenerCount("SIGINT") === 0 && process.listenerCount("SIGTERM") === 0) {
+      process.kill(process.pid, signal);
+    }
   };
   process.on("SIGINT", signalHandler);
   process.on("SIGTERM", signalHandler);
@@ -720,6 +754,15 @@ async function launchSystemBrowser({ executablePath } = {}) {
     // Sweeping must never block a launch.
   }
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), PROFILE_MARKER));
+  // Record the launcher (pid + /proc start time) inside the profile BEFORE
+  // Chrome starts, so a later sweep can tell an orphan (launcher gone) from a
+  // live clone (launcher alive) — see sweepOrphanedBrowsers.
+  if (IS_POSIX) {
+    fs.writeFileSync(
+      path.join(profileDir, "launcher.json"),
+      JSON.stringify({ pid: process.pid, startTime: processStartTime(process.pid) }),
+    );
+  }
   // detached: true puts Chrome (and every renderer/zygote it spawns) in its
   // own process group so cleanup can signal the entire tree with -pid.
   const child = spawn(executablePath, [
